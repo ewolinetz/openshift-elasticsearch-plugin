@@ -130,7 +130,7 @@ public class DynamicACLFilter
 					syncAcl();
 				}
 				
-				//setDashboards(user, listProjectsFor(token), roles, esClient, kibanaIndex, kibanaVersion);
+				setDashboards(user, listProjectsFor(token), roles, esClient, kibanaIndex, kibanaVersion);
 			}
 
 		} catch (Exception e) {
