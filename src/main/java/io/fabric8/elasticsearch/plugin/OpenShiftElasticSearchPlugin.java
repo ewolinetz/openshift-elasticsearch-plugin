@@ -15,19 +15,18 @@
  */
 package io.fabric8.elasticsearch.plugin;
 
-import java.util.Collection;
-
-import org.elasticsearch.action.ActionModule;
-import org.elasticsearch.common.collect.Lists;
-import org.elasticsearch.common.component.LifecycleComponent;
-import org.elasticsearch.common.inject.Module;
-import org.elasticsearch.plugins.AbstractPlugin;
-
 import io.fabric8.elasticsearch.plugin.acl.SearchGuardACLRequestActionFilter;
 
 import java.util.Collection;
 
-public class OpenShiftElasticSearchPlugin extends AbstractPlugin {
+import org.elasticsearch.action.ActionModule;
+import org.elasticsearch.common.component.LifecycleComponent;
+import org.elasticsearch.common.inject.Module;
+import org.elasticsearch.plugins.Plugin;
+
+import com.google.common.collect.Lists;
+
+public class OpenShiftElasticSearchPlugin extends Plugin {
 
 	public OpenShiftElasticSearchPlugin(){
 		
@@ -44,7 +43,7 @@ public class OpenShiftElasticSearchPlugin extends AbstractPlugin {
 
 	@SuppressWarnings("rawtypes")
 	@Override
-	public Collection<Class<? extends LifecycleComponent>> services() {
+	public Collection<Class<? extends LifecycleComponent>> nodeServices() {
 		Collection<Class<? extends LifecycleComponent>> services = Lists.newArrayList();
 		services.add(OpenShiftElasticSearchService.class);
 		return services;
@@ -57,9 +56,9 @@ public class OpenShiftElasticSearchPlugin extends AbstractPlugin {
 	}
 
 	@Override
-	public Collection<Class<? extends Module>> modules() {
-		Collection<Class<? extends Module>> modules = Lists.newArrayList();
-		modules.add(OpenShiftElasticSearchModule.class);
+	public Collection<Module> nodeModules() {
+		Collection<Module> modules = Lists.newArrayList();
+		modules.add(new OpenShiftElasticSearchModule());
 		return modules;
 	}
 }

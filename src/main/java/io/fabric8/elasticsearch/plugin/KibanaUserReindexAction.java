@@ -16,6 +16,7 @@
 package io.fabric8.elasticsearch.plugin;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Map;
 
 import org.elasticsearch.action.ActionListener;
@@ -23,21 +24,23 @@ import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.action.admin.indices.mapping.get.GetFieldMappingsResponse;
 import org.elasticsearch.action.admin.indices.mapping.get.GetFieldMappingsResponse.FieldMappingMetaData;
+import org.elasticsearch.action.admin.indices.validate.query.QueryExplanation;
+import org.elasticsearch.action.admin.indices.validate.query.ValidateQueryResponse;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.get.MultiGetItemResponse;
 import org.elasticsearch.action.get.MultiGetResponse;
 import org.elasticsearch.action.get.MultiGetResponse.Failure;
 import org.elasticsearch.action.index.IndexResponse;
+import org.elasticsearch.action.search.MultiSearchResponse;
 import org.elasticsearch.action.support.ActionFilter;
 import org.elasticsearch.action.support.ActionFilterChain;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.collect.ImmutableMap;
 import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.io.stream.BytesStreamInput;
+import org.elasticsearch.common.io.stream.ByteBufferStreamInput;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.logging.ESLogger;
@@ -48,6 +51,8 @@ import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.json.JsonXContent;
 import org.elasticsearch.index.get.GetField;
 import org.elasticsearch.index.get.GetResult;
+
+import com.google.common.collect.ImmutableMap;
 
 public class KibanaUserReindexAction implements ActionFilter, ConfigurationSettings {
 
@@ -136,13 +141,44 @@ public class KibanaUserReindexAction implements ActionFilter, ConfigurationSetti
 					MappingResponseRemapper remapper = new MappingResponseRemapper();
 					remapper.updateMappingResponse(bso, index, mappings);
 					
-					BytesStreamInput input = new BytesStreamInput(bso.bytes());
+					ByteBufferStreamInput input = new ByteBufferStreamInput((ByteBuffer) bso.bytes());
 	
 					response.readFrom(input);
 				} catch (IOException e) {
 					logger.error("Error while rewriting GetFieldMappingsResponse", e);
 				}
 			}
+			/*else if ( response instanceof MultiSearchResponse) {
+				final MultiSearchResponse msResponse = (MultiSearchResponse) response;
+				
+				//iterate over searchresponse indexes and update the item response/failure
+				for ( Item item : msResponse.getResponses() ) {
+
+					String toUpdate = "";
+					if ( item.isFailure() )
+						toUpdate = item.getFailureMessage();
+					else
+						toUpdate = item.getResponse().toString();
+
+					logger.info("MultiSearchResponse Item toUpdate is '{}'", toUpdate);
+					
+				}
+			}*/
+			else if ( response instanceof ValidateQueryResponse ) {
+				final ValidateQueryResponse vqResponse = (ValidateQueryResponse) response;
+				
+				for ( QueryExplanation qe : vqResponse.getQueryExplanation() ) {
+					
+					logger.info("QueryExplanation is '{}' index:{} explaination:{} error:{}", qe, qe.getIndex(), qe.getExplanation(), qe.getError());
+					
+					String index = qe.getIndex();
+					if ( isKibanaUserIndex(index) ) {
+						index = kibanaIndex;
+					}
+					
+					qe = new QueryExplanation(index, qe.isValid(), qe.getExplanation(), qe.getError());
+				}
+			}/**/
 		}
 		
 		chain.proceed(action, response, listener);
@@ -196,7 +232,9 @@ public class KibanaUserReindexAction implements ActionFilter, ConfigurationSetti
 			index = kibanaIndex;
 		}
 		
-		return new Failure(index, failure.getType(), failure.getId(), message);
+		Throwable t = new Throwable(message, failure.getFailure().getCause());
+		
+		return new Failure(index, failure.getType(), failure.getId(), t);
 	}
 
 	private boolean isKibanaUserIndex(String index) {
@@ -251,6 +289,21 @@ public class KibanaUserReindexAction implements ActionFilter, ConfigurationSetti
 			ImmutableMap<String, ImmutableMap<String, ImmutableMap<String, FieldMappingMetaData>>> mappings = ((GetFieldMappingsResponse)response).mappings();
 			for ( String key : mappings.keySet() )
 				index = key;
+		}
+		else if ( response instanceof ValidateQueryResponse ) {
+			// iterate through items and return true if it contains, otherwise return false
+			/*for ( QueryExplanation qe : ((ValidateQueryResponse) response).getQueryExplanation() ) {
+				if ( isKibanaUserIndex(qe.getIndex()) )
+					return true;
+			}
+			
+			return false;*/
+			return true;
+		}
+		else if ( response instanceof MultiSearchResponse ) {
+			// iterate through items and return true if containers, otherwise return false
+			//TODO: fix this
+			return true;
 		}
 		
 		return isKibanaUserIndex(index);

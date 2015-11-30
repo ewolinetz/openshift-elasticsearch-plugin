@@ -43,8 +43,8 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.engine.DocumentMissingException;
-import org.elasticsearch.indices.IndexMissingException;
 import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestFilter;
 import org.elasticsearch.rest.RestFilterChain;
@@ -313,7 +313,7 @@ public class DynamicACLFilter
 				return;
 			}
 		}
-		catch (IndexMissingException | DocumentMissingException | NullPointerException e) {
+		catch (IndexNotFoundException | DocumentMissingException | NullPointerException e) {
 			logger.debug("Caught Exception, ACL has not been seeded yet", e);
 			create = true;
 		}

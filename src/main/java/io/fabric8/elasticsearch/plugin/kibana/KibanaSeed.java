@@ -35,6 +35,7 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.search.SearchHit;
 
 public class KibanaSeed {
@@ -158,11 +159,11 @@ public class KibanaSeed {
 			
 		} catch (InterruptedException | ExecutionException e) {
 			
-			if ( e.getCause() instanceof org.elasticsearch.indices.IndexMissingException ) {
-				logger.debug("No index found");
+			if ( e.getCause() instanceof IndexNotFoundException ) {
+				logger.info("No index found - InvalidIndexNameException");
 			}
 			else {
-				logger.error("Error getting default index for {}", e, username);
+				logger.info("Error getting default index for {}", e, username);
 			}
 		}
 		
@@ -215,7 +216,7 @@ public class KibanaSeed {
 				
 		} catch (InterruptedException | ExecutionException e) {
 			// if is ExecutionException with cause of IndexMissingException
-			if ( e.getCause() instanceof org.elasticsearch.indices.IndexMissingException ) {
+			if ( e.getCause() instanceof IndexNotFoundException ) {
 				logger.debug("Encountered IndexMissingException, returning empty response");
 			}
 			else {

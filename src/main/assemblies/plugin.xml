@@ -32,4 +32,12 @@
             </excludes>
         </dependencySet>
     </dependencySets>
+    <fileSets>
+        <fileSet>
+        	<outputDirectory>/</outputDirectory>
+        	<includes>
+            	<include>plugin-descriptor.properties</include>
+            </includes>
+        </fileSet>
+    </fileSets>
 </assembly>

@@ -20,14 +20,14 @@ import org.apache.commons.lang.StringUtils;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.logging.ESLogger;
-import org.elasticsearch.common.netty.buffer.BigEndianHeapChannelBuffer;
-import org.elasticsearch.common.netty.handler.codec.http.HttpRequest;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.http.netty.NettyHttpRequest;
 import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestFilter;
 import org.elasticsearch.rest.RestFilterChain;
 import org.elasticsearch.rest.RestRequest;
+import org.jboss.netty.buffer.BigEndianHeapChannelBuffer;
+import org.jboss.netty.handler.codec.http.HttpRequest;
 
 public class KibanaUserReindexFilter extends RestFilter implements ConfigurationSettings {
 
@@ -53,6 +53,7 @@ public class KibanaUserReindexFilter extends RestFilter implements Configuration
 				String userIndex = requestedIndex + "." + getUsernameHash(user);
 				logger.debug("Matched for a kibana user header, will set to '{}' for user '{}'", userIndex, user);
 				
+				logger.info("Matched a request: index: {}  request: '{}'", userIndex, request.content().toUtf8());
 				//update the request URI here
 				request = updateRequestIndex(request, requestedIndex, userIndex);
 				
@@ -67,6 +68,10 @@ public class KibanaUserReindexFilter extends RestFilter implements Configuration
 					request = updateMGetRequest(request, ".kibana", userIndex);
 					
 					logger.debug("URI for request is '{}' after update", request.uri());
+				}
+				else {
+					if ( requestedIndex.startsWith("_msearch") )
+						logger.info("{} did not match anything, request is '{}'", requestedIndex, request.content().toUtf8());
 				}
 			}
 
