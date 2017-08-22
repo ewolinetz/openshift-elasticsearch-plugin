@@ -20,10 +20,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.ActionResponse;
-import org.elasticsearch.action.ActionWriteResponse.ShardInfo;
 import org.elasticsearch.action.admin.indices.mapping.get.GetFieldMappingsResponse;
 import org.elasticsearch.action.admin.indices.mapping.get.GetFieldMappingsResponse.FieldMappingMetaData;
 import org.elasticsearch.action.delete.DeleteResponse;
@@ -34,13 +34,12 @@ import org.elasticsearch.action.get.MultiGetResponse.Failure;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.support.ActionFilter;
 import org.elasticsearch.action.support.ActionFilterChain;
+import org.elasticsearch.action.support.replication.ReplicationResponse.ShardInfo;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.cluster.ClusterService;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.io.stream.ByteBufferStreamInput;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.io.stream.StreamOutput;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.ToXContent;
@@ -53,22 +52,20 @@ import com.google.common.collect.ImmutableMap;
 
 import io.fabric8.elasticsearch.plugin.kibana.GetResultBuilder;
 
-public class KibanaUserReindexAction implements ActionFilter, ConfigurationSettings {
+@SuppressWarnings("rawtypes")
+public class KibanaUserReindexAction implements ActionFilter, ConfigurationSettings, ActionListener<ActionResponse> {
 
-    private final ESLogger logger;
+    private static final Logger LOG =Loggers.getLogger(KibanaUserReindexAction.class);
     private final String kibanaIndex;
 
     private Boolean enabled;
 
     @Inject
-    public KibanaUserReindexAction(final Settings settings, final ClusterService clusterService, final Client client) {
-        this.enabled = settings.getAsBoolean(OPENSHIFT_KIBANA_REWRITE_ENABLED_FLAG,
-                OPENSHIFT_KIBANA_REWRITE_ENABLED_DEFAULT);
-        this.logger = Loggers.getLogger(KibanaUserReindexAction.class);
-        this.kibanaIndex = settings.get(KIBANA_CONFIG_INDEX_NAME, DEFAULT_USER_PROFILE_PREFIX);
+    public KibanaUserReindexAction(final PluginSettings settings, final Client client) {
+        this.kibanaIndex = settings.getDefaultKibanaIndex();
 
-        if (enabled) {
-            logger.debug("Initializing KibanaUserReindexAction");
+        if (settings.isKibanaRewriteEnabled()) {
+            LOG.debug("Initializing KibanaUserReindexAction");
         }
     }
 
@@ -79,17 +76,32 @@ public class KibanaUserReindexAction implements ActionFilter, ConfigurationSetti
     }
 
     @Override
-    public void apply(Task task, String action, ActionRequest request, ActionListener listener,
-            ActionFilterChain chain) {
-        chain.proceed(task, action, request, listener);
+    public void apply(Task task, String action, ActionRequest request, ActionListener listener, ActionFilterChain chain) {
+        if (enabled) {
+            LOG.debug("Response with Action '{}'", action);
+            listener = this;
+        }
+    	chain.proceed(task, action, request, listener);
     }
 
-    @Override
-    public void apply(String action, ActionResponse response, @SuppressWarnings("rawtypes") ActionListener listener,
-            ActionFilterChain chain) {
+    
+		// TODO Auto-generated method stub
+		
+	}
 
-        if (enabled) {
-            logger.debug("Response with Action '{}' and class '{}'", action, response.getClass());
+	@Override
+	public void onFailure(Exception e) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void onResponse(ActionResponse response) {
+//	@Override
+//    public void apply(String action, ActionResponse response, ActionListener listener, ActionFilterChain chain) {
+
+//        if (enabled) {
+//            LOG.debug("Response with Action '{}' and class '{}'", action, response.getClass());
 
             if (containsKibanaUserIndex(response)) {
 
@@ -155,13 +167,13 @@ public class KibanaUserReindexAction implements ActionFilter, ConfigurationSetti
 
                         response.readFrom(input);
                     } catch (IOException e) {
-                        logger.error("Error while rewriting GetFieldMappingsResponse", e);
+                        LOG.error("Error while rewriting GetFieldMappingsResponse", e);
                     }
                 }
             }
-        }
-
-        chain.proceed(action, response, listener);
+//        }
+//
+//        chain.proceed(action, response, listener);
     }
 
     private GetResult buildNewResult(GetResponse response) {

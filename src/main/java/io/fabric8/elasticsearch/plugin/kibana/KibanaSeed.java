@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
 import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
@@ -65,7 +66,7 @@ public class KibanaSeed implements ConfigurationSettings {
     private static final String OPERATIONS_PROJECT = ".operations";
     private static final String BLANK_PROJECT = ".empty-project";
     private static final String ADMIN_ALIAS_NAME = ".all";
-    private static final ESLogger LOGGER = Loggers.getLogger(KibanaSeed.class);
+    private static final Logger LOGGER = Loggers.getLogger(KibanaSeed.class);
 
     public static final String DEFAULT_INDEX_FIELD = "defaultIndex";
 

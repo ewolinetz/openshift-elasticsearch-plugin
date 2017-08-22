@@ -17,34 +17,35 @@
 package io.fabric8.elasticsearch.plugin.acl;
 
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.UnaryOperator;
 
 import org.apache.commons.lang.ObjectUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
-import org.elasticsearch.action.WriteConsistencyLevel;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.get.MultiGetItemResponse;
 import org.elasticsearch.action.get.MultiGetRequest;
 import org.elasticsearch.action.get.MultiGetResponse;
+import org.elasticsearch.action.support.WriteRequest.RefreshPolicy;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.logging.ESLogger;
+import org.elasticsearch.client.node.NodeClient;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.xcontent.XContentHelper;
+import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.rest.BytesRestResponse;
 import org.elasticsearch.rest.RestChannel;
-import org.elasticsearch.rest.RestFilter;
-import org.elasticsearch.rest.RestFilterChain;
+import org.elasticsearch.rest.RestHandler;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.threadpool.ThreadPool;
 
 import com.floragunn.searchguard.action.configupdate.ConfigUpdateAction;
 import com.floragunn.searchguard.action.configupdate.ConfigUpdateRequest;
 import com.floragunn.searchguard.action.configupdate.ConfigUpdateResponse;
-import com.floragunn.searchguard.support.ConfigConstants;
 
 import io.fabric8.elasticsearch.plugin.ConfigurationSettings;
 import io.fabric8.elasticsearch.plugin.OpenshiftRequestContextFactory;
@@ -56,9 +57,9 @@ import io.fabric8.elasticsearch.util.RequestUtils;
 /**
  * REST filter to update the ACL when a user first makes a request
  */
-public class DynamicACLFilter extends RestFilter implements ConfigurationSettings {
+public class DynamicACLFilter implements ConfigurationSettings {
 
-    private static final ESLogger LOGGER = Loggers.getLogger(DynamicACLFilter.class);
+    private static final Logger LOGGER = Loggers.getLogger(DynamicACLFilter.class);
 
     private final UserProjectCache cache;
     private final String searchGuardIndex;
@@ -77,13 +78,13 @@ public class DynamicACLFilter extends RestFilter implements ConfigurationSetting
     private final OpenshiftRequestContextFactory contextFactory;
     private final SearchGuardSyncStrategyFactory documentFactory;
     private final RequestUtils utils;
+    private final ThreadPool threadPool;
 
-
-    @Inject
-    public DynamicACLFilter(final UserProjectCache cache, final PluginSettings settings, final KibanaSeed seed, 
+    public DynamicACLFilter(final UserProjectCache cache, final PluginSettings settings, final KibanaSeed seed,
             final Client client, final OpenshiftRequestContextFactory contextFactory,
-            final SearchGuardSyncStrategyFactory documentFactory,
+            final SearchGuardSyncStrategyFactory documentFactory, ThreadPool threadPool
             final RequestUtils utils) {
+    	this.threadPool = threadPool;
         this.client = client;
         this.cache = cache;
         this.kibanaSeed = seed;
@@ -97,10 +98,21 @@ public class DynamicACLFilter extends RestFilter implements ConfigurationSetting
         this.utils = utils;
     }
 
-    @Override
-    public void process(RestRequest request, RestChannel channel, RestFilterChain chain) throws Exception {
+    public RestHandler wrap(RestHandler original, UnaryOperator<RestHandler> unaryOperator) {
+        return new RestHandler() {
+            
+            @Override
+            public void handleRequest(RestRequest request, RestChannel channel, NodeClient client) throws Exception {
+                if(continueProcessing(request, channel, client))
+                {
+                    unaryOperator.apply(original);
+                }
+            }
+        };
+    }
+    
+	public boolean continueProcessing(RestRequest request, RestChannel channel, NodeClient client) throws Exception {
         boolean continueProcessing = true;
-
         try {
             if (enabled) {
                 // grab the kibana version here out of "kbn-version" if we can
@@ -108,7 +120,7 @@ public class DynamicACLFilter extends RestFilter implements ConfigurationSetting
                 String kbnVersion = getKibanaVersion(request);
                 final OpenshiftRequestContext requestContext = contextFactory.create(request, cache);
                 request = utils.modifyRequest(request, requestContext);
-                request.putInContext(OPENSHIFT_REQUEST_CONTEXT, requestContext);
+                threadPool.getThreadContext().putTransient(OPENSHIFT_REQUEST_CONTEXT, requestContext);
                 if (requestContext.isAuthenticated() && !cache.hasUser(requestContext.getUser(), requestContext.getToken())) {
                     if (updateCache(requestContext, kbnVersion)) {
                         kibanaSeed.setDashboards(requestContext, client, kbnVersion, cdmProjectPrefix);
@@ -119,15 +131,12 @@ public class DynamicACLFilter extends RestFilter implements ConfigurationSetting
             }
         } catch (ElasticsearchSecurityException ese) {
             LOGGER.info("Could not authenticate user");
-            channel.sendResponse(new BytesRestResponse(RestStatus.UNAUTHORIZED));
+            channel.sendResponse(new BytesRestResponse(RestStatus.UNAUTHORIZED, ""));
             continueProcessing = false;
         } catch (Exception e) {
             LOGGER.error("Error handling request in {}", e, this.getClass().getSimpleName());
-        } finally {
-            if (continueProcessing) {
-                chain.continueProcessing(request, channel);
-            }
         }
+        return continueProcessing;
     }
 
     private String getKibanaVersion(RestRequest request) {
@@ -156,7 +165,7 @@ public class DynamicACLFilter extends RestFilter implements ConfigurationSetting
             LOGGER.debug("Loading SearchGuard ACL...");
 
             final MultiGetRequest mget = new MultiGetRequest();
-            mget.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true"); //header needed here
+//            mget.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true"); //header needed here
             mget.refresh(true);
             mget.realtime(true);
             mget.add(searchGuardIndex, SEARCHGUARD_ROLE_TYPE, SEARCHGUARD_CONFIG_ID);
@@ -168,7 +177,7 @@ public class DynamicACLFilter extends RestFilter implements ConfigurationSetting
             for (MultiGetItemResponse item : response.getResponses()) {
                 if(!item.isFailed()) {
                     if(LOGGER.isDebugEnabled()){
-                        LOGGER.debug("Read in {}: {}", item.getType(), XContentHelper.convertToJson(item.getResponse().getSourceAsBytesRef(), true, true));
+                        LOGGER.debug("Read in {}: {}", item.getType(), XContentHelper.convertToJson(item.getResponse().getSourceAsBytesRef(), true, true, XContentType.JSON));
                     }
                     switch (item.getType()) {
                     case SEARCHGUARD_ROLE_TYPE:
@@ -204,41 +213,36 @@ public class DynamicACLFilter extends RestFilter implements ConfigurationSetting
 
     private void writeAcl(SearchGuardACLDocument... documents) throws Exception {
 
-        BulkRequestBuilder builder = this.client.prepareBulk().setRefresh(true);
+        BulkRequestBuilder builder = this.client.prepareBulk().setRefreshPolicy(RefreshPolicy.IMMEDIATE);
 
         for (SearchGuardACLDocument doc : documents) {
             UpdateRequest update = this.client
                     .prepareUpdate(searchGuardIndex, doc.getType(), SEARCHGUARD_CONFIG_ID)
-                    .setConsistencyLevel(WriteConsistencyLevel.DEFAULT)
+//                    .setConsistencyLevel(WriteConsistencyLevel.DEFAULT)
                     .setDoc(doc.toXContentBuilder())
                     .request();
             builder.add(update);
             if(LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Built {} update request: {}", doc.getType(), XContentHelper.convertToJson(doc.toXContentBuilder().bytes(),true, true));
+                LOGGER.debug("Built {} update request: {}", doc.getType(), XContentHelper.convertToJson(doc.toXContentBuilder().bytes(),true, true, XContentType.JSON));
             }
         }
         BulkRequest request = builder.request();
-        request.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
+//        request.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
         BulkResponse response = this.client.bulk(request).actionGet();
 
         if(!response.hasFailures()) {
             ConfigUpdateRequest confRequest = new ConfigUpdateRequest(SEARCHGUARD_INITIAL_CONFIGS);
-            confRequest.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
+//            confRequest.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
             ConfigUpdateResponse cur = this.client
                     .execute(ConfigUpdateAction.INSTANCE, confRequest).actionGet();
-            if (cur.getNodes().length > 0) {
-                LOGGER.debug("Successfully reloaded config with '{}' nodes", cur.getNodes().length);
+            final int size = cur.getNodes().size();
+            if (size > 0) {
+                LOGGER.debug("Successfully reloaded config with '{}' nodes", size);
             }else {
-                LOGGER.warn("Failed to reloaded configs", cur.getNodes().length);
+                LOGGER.warn("Failed to reloaded configs", size);
             }
         }else {
             LOGGER.error("Unable to write ACL {}", response.buildFailureMessage());
         }
-    }
-
-    @Override
-    public int order() {
-        // need to run before search guard
-        return Integer.MIN_VALUE;
     }
 }

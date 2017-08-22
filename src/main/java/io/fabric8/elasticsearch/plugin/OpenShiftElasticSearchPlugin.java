@@ -16,132 +16,204 @@
 
 package io.fabric8.elasticsearch.plugin;
 
-import java.io.Closeable;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
-import org.elasticsearch.action.ActionModule;
+import org.apache.logging.log4j.Logger;
+import org.elasticsearch.action.ActionRequest;
+import org.elasticsearch.action.ActionResponse;
+import org.elasticsearch.action.support.ActionFilter;
+import org.elasticsearch.client.Client;
+import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
+import org.elasticsearch.cluster.node.DiscoveryNodes;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.component.LifecycleComponent;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.inject.Module;
+import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
+import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.common.network.NetworkService;
+import org.elasticsearch.common.settings.ClusterSettings;
+import org.elasticsearch.common.settings.IndexScopedSettings;
+import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.http.HttpServerModule;
+import org.elasticsearch.common.settings.SettingsFilter;
+import org.elasticsearch.common.util.BigArrays;
+import org.elasticsearch.common.util.concurrent.ThreadContext;
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
+import org.elasticsearch.http.HttpServerTransport;
+import org.elasticsearch.http.HttpServerTransport.Dispatcher;
+import org.elasticsearch.index.IndexModule;
+import org.elasticsearch.indices.breaker.CircuitBreakerService;
+import org.elasticsearch.plugins.ActionPlugin;
+import org.elasticsearch.plugins.NetworkPlugin;
+import org.elasticsearch.plugins.ActionPlugin.ActionHandler;
 import org.elasticsearch.plugins.Plugin;
-import org.elasticsearch.rest.RestModule;
-import org.elasticsearch.transport.TransportModule;
+import org.elasticsearch.rest.RestController;
+import org.elasticsearch.rest.RestHandler;
+import org.elasticsearch.script.ScriptService;
+import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.transport.Transport;
+import org.elasticsearch.transport.TransportInterceptor;
+import org.elasticsearch.watcher.ResourceWatcherService;
 
 import com.floragunn.searchguard.SearchGuardPlugin;
-import com.floragunn.searchguard.ssl.SearchGuardSSLPlugin;
-import com.google.common.collect.Lists;
 
+import io.fabric8.elasticsearch.plugin.acl.DynamicACLFilter;
+import io.fabric8.elasticsearch.plugin.acl.SearchGuardSyncStrategyFactory;
+import io.fabric8.elasticsearch.plugin.acl.UserProjectCache;
+import io.fabric8.elasticsearch.plugin.acl.UserProjectCacheMapAdapter;
 import io.fabric8.elasticsearch.plugin.filter.FieldStatsResponseFilter;
-import io.fabric8.elasticsearch.rest.KibanaUserRestHandler;
+import io.fabric8.elasticsearch.plugin.kibana.IndexMappingLoader;
+import io.fabric8.elasticsearch.plugin.kibana.KibanaSeed;
+import io.fabric8.elasticsearch.util.RequestUtils;
 
-public class OpenShiftElasticSearchPlugin extends Plugin implements ConfigurationSettings {
+public class OpenShiftElasticSearchPlugin extends Plugin implements ConfigurationSettings, ActionPlugin, NetworkPlugin {
 
+	private static final Logger LOG = Loggers.getLogger(OpenShiftElasticSearchPlugin.class);
     private final Settings settings;
-    private final SearchGuardPlugin searchguard;
-    private final SearchGuardSSLPlugin sgSSL;
+	private KibanaUserReindexFilter kibanaReindexFilter;
+	private DynamicACLFilter aclFilter;
+	private SearchGuardPlugin sgPlugin;
 
-    @Inject
     public OpenShiftElasticSearchPlugin(final Settings settings) {
-        // This is to not have SG print an error with us loading the SG_SSL
-        // plugin for our transport client
-        System.setProperty("sg.nowarn.client", "true");
-        this.settings = settings;//Settings.builder().put(settings).build();
-        this.sgSSL = new SearchGuardSSLPlugin(this.settings);
-        this.searchguard = new SearchGuardPlugin(this.settings);
+        this.settings = settings;
     }
 
-    @Override
-    public String name() {
-        return "openshift-elasticsearch-plugin";
-    }
+//    @Override
+//    public String name() {
+//        return "openshift-elasticsearch-plugin";
+//    }
+//
+//    @Override
+//    public String description() {
+//        return "OpenShift ElasticSearch Plugin";
+//    }
+//    
+    
+    public Collection<Object> createComponents(Client client, ClusterService clusterService, ThreadPool threadPool,
+            ResourceWatcherService resourceWatcherService, ScriptService scriptService,
+            NamedXContentRegistry xContentRegistry) {
+    	
+    	final UserProjectCache cache = new UserProjectCacheMapAdapter(settings);
+    	final PluginSettings pluginSettings = new PluginSettings(settings);
+    	final IndexMappingLoader indexMappingLoader = new IndexMappingLoader(settings);
+    	final PluginClient pluginClient = new PluginClient(client);
+		final RequestUtils requestUtils = new RequestUtils(settings);
+		final OpenshiftClientFactory clientFactory = new OpenshiftClientFactory();
+		final OpenshiftRequestContextFactory contextFactory = new OpenshiftRequestContextFactory(settings, requestUtils, clientFactory);
+		final SearchGuardSyncStrategyFactory documentFactory = new SearchGuardSyncStrategyFactory(pluginSettings);
+		final KibanaSeed seed = new KibanaSeed(pluginSettings, indexMappingLoader, pluginClient);
+		sgPlugin = new SearchGuardPlugin(settings);
 
-    @Override
-    public String description() {
-        return "OpenShift ElasticSearch Plugin";
-    }
-
-    public void onModule(ActionModule actionModule) {
-        actionModule.registerFilter(FieldStatsResponseFilter.class);
-        actionModule.registerFilter(KibanaUserReindexAction.class);
-        searchguard.onModule(actionModule);
-    }
-
-    public void onModule(RestModule restModule) {
-        searchguard.onModule(restModule);
-        sgSSL.onModule(restModule);
-        restModule.addRestAction(KibanaUserRestHandler.class);
+		this.aclFilter = new DynamicACLFilter(cache, pluginSettings, seed, client, contextFactory, documentFactory, threadPool);
+		this.kibanaReindexFilter = new KibanaUserReindexFilter(pluginSettings);
+		OpenShiftElasticSearchService osElasticSearvice = new OpenShiftElasticSearchService(settings, client, cache);
+		
+    	List<Object> list = new ArrayList<>();
+    	list.add(cache);
+    	list.add(pluginSettings);
+    	list.add(indexMappingLoader);
+    	list.add(pluginClient);
+    	list.add(requestUtils);
+    	list.add(clientFactory);
+    	list.add(contextFactory);
+    	list.add(documentFactory);
+    	list.add(seed);
+    	list.add(aclFilter);
+    	list.add(kibanaReindexFilter);
+		list.add(osElasticSearvice);
+    	list.add(new FieldStatsResponseFilter(pluginClient));
+		list.addAll(sgPlugin.createComponents(client, clusterService, threadPool, resourceWatcherService, scriptService, xContentRegistry));
+    	return list;
     }
     
-    public void onModule(final TransportModule module) {
-        searchguard.onModule(module);
-        sgSSL.onModule(module);
-    }
-    
-    public void onModule(final HttpServerModule module) {
-        searchguard.onModule(module);
-        sgSSL.onModule(module);
-    }
+    @Override
+	public UnaryOperator<RestHandler> getRestHandlerWrapper(ThreadContext threadContext) {
+		return (rh) -> aclFilter.wrap(rh, sgPlugin.getRestHandlerWrapper(threadContext));
+	}
+
+	@Override
+	public List<RestHandler> getRestHandlers(Settings settings, RestController restController,
+			ClusterSettings clusterSettings, IndexScopedSettings indexScopedSettings, SettingsFilter settingsFilter,
+			IndexNameExpressionResolver indexNameExpressionResolver, Supplier<DiscoveryNodes> nodesInCluster) {
+    	List<RestHandler> list = new ArrayList<>();
+    	list.addAll(sgPlugin.getRestHandlers(settings, restController, clusterSettings, indexScopedSettings, settingsFilter, indexNameExpressionResolver, nodesInCluster));
+    	list.add(kibanaReindexFilter);
+		return list;
+	}
+	
+	@Override
+	public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
+		List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> list = new ArrayList<>();
+		list.addAll(sgPlugin.getActions());
+		return list;
+	}
 
     @Override
-    public Collection<Module> shardModules(Settings indexSettings) {
-        Collection<Module> modules = Lists.newArrayList();
-        modules.addAll(searchguard.shardModules(indexSettings));
-        modules.addAll(sgSSL.shardModules(indexSettings));
-        return modules;
-    }
+	public void onIndexModule(IndexModule indexModule) {
+		sgPlugin.onIndexModule(indexModule);
+	}
 
-    @SuppressWarnings("rawtypes")
-    @Override
-    public Collection<Class<? extends LifecycleComponent>> nodeServices() {
-        Collection<Class<? extends LifecycleComponent>> services = Lists.newArrayList();
-        services.addAll(searchguard.nodeServices());
-        services.addAll(sgSSL.nodeServices());
-        services.add(OpenShiftElasticSearchService.class);
-        return services;
-    }
+	@Override
+	public List<Class<? extends ActionFilter>> getActionFilters() {
+    	List<Class<? extends ActionFilter>> list =  Arrays.asList(FieldStatsResponseFilter.class, KibanaUserReindexAction.class);
+    	list.addAll(sgPlugin.getActionFilters());
+    	return list;
+	}
+	
+	@Override
+	public List<TransportInterceptor> getTransportInterceptors(ThreadContext threadContext) {
+		return sgPlugin.getTransportInterceptors(threadContext);
+	}
+	
+	@Override
+	public Map<String, Supplier<Transport>> getTransports(Settings settings, ThreadPool threadPool, BigArrays bigArrays,
+			CircuitBreakerService circuitBreakerService, NamedWriteableRegistry namedWriteableRegistry,
+			NetworkService networkService) {
+		return sgPlugin.getTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry, networkService);
+	}
 
-    @Override
-    public Collection<Module> nodeModules() {
-        Collection<Module> modules = Lists.newArrayList();
-        modules.addAll(searchguard.nodeModules());
-        modules.addAll(sgSSL.nodeModules());
-        modules.add(new OpenShiftElasticSearchModule());
-        return modules;
-    }
-    
+	@Override
+	public Map<String, Supplier<HttpServerTransport>> getHttpTransports(Settings settings, ThreadPool threadPool,
+			BigArrays bigArrays, CircuitBreakerService circuitBreakerService,
+			NamedWriteableRegistry namedWriteableRegistry, NamedXContentRegistry xContentRegistry,
+			NetworkService networkService, Dispatcher dispatcher) {
+		return sgPlugin.getHttpTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry, xContentRegistry, networkService, dispatcher);
+	}
+	
 
-    @Override
-    public Collection<Module> indexModules(Settings indexSettings) {
-        Collection<Module> modules = Lists.newArrayList();
-        modules.addAll(searchguard.indexModules(indexSettings));
-        modules.addAll(sgSSL.indexModules(indexSettings));
-        return modules;
-    }
+	@Override
+	public Collection<Class<? extends LifecycleComponent>> getGuiceServiceClasses() {
+		return sgPlugin.getGuiceServiceClasses();
+	}
+	
+	@Override
+	public Settings additionalSettings() {
+		return sgPlugin.additionalSettings();
+	}
 
-    @Override
-    public Collection<Class<? extends Closeable>> indexServices() {
-        Collection<Class<? extends Closeable>> services = Lists.newArrayList();
-        services.addAll(searchguard.indexServices());
-        services.addAll(sgSSL.indexServices());
-        return services;
-    }
+	@Override
+	public List<Setting<?>> getSettings() {
+		return sgPlugin.getSettings();
+	}
 
-    @Override
-    public Collection<Class<? extends Closeable>> shardServices() {
-        Collection<Class<? extends Closeable>> services = Lists.newArrayList();
-        services.addAll(searchguard.shardServices());
-        services.addAll(sgSSL.shardServices());
-        return services;
-    }
+	@Override
+	public List<String> getSettingsFilter() {
+		return sgPlugin.getSettingsFilter();
+	}
 
-    @Override
-    public Settings additionalSettings() {
-        Settings.Builder settingsBuilder = Settings.builder()
-                .put(settings)
-                .put(searchguard.additionalSettings())
-                .put(sgSSL.additionalSettings());
-        return settingsBuilder.build();
-    }
+	@Override
+	public void close() throws IOException {
+		if(sgPlugin != null) {
+			sgPlugin.close();
+		}
+		super.close();
+	}
+
+	
 }
