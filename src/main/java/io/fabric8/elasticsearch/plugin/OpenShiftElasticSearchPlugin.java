@@ -51,7 +51,6 @@ import org.elasticsearch.index.IndexModule;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
 import org.elasticsearch.plugins.ActionPlugin;
 import org.elasticsearch.plugins.NetworkPlugin;
-import org.elasticsearch.plugins.ActionPlugin.ActionHandler;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestHandler;
@@ -83,23 +82,12 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     public OpenShiftElasticSearchPlugin(final Settings settings) {
         this.settings = settings;
     }
-
-//    @Override
-//    public String name() {
-//        return "openshift-elasticsearch-plugin";
-//    }
-//
-//    @Override
-//    public String description() {
-//        return "OpenShift ElasticSearch Plugin";
-//    }
-//    
     
     public Collection<Object> createComponents(Client client, ClusterService clusterService, ThreadPool threadPool,
             ResourceWatcherService resourceWatcherService, ScriptService scriptService,
             NamedXContentRegistry xContentRegistry) {
     	
-    	final UserProjectCache cache = new UserProjectCacheMapAdapter(settings);
+    	final UserProjectCache cache = new UserProjectCacheMapAdapter();
     	final PluginSettings pluginSettings = new PluginSettings(settings);
     	final IndexMappingLoader indexMappingLoader = new IndexMappingLoader(settings);
     	final PluginClient pluginClient = new PluginClient(client);
@@ -110,7 +98,7 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
 		final KibanaSeed seed = new KibanaSeed(pluginSettings, indexMappingLoader, pluginClient);
 		sgPlugin = new SearchGuardPlugin(settings);
 
-		this.aclFilter = new DynamicACLFilter(cache, pluginSettings, seed, client, contextFactory, documentFactory, threadPool);
+		this.aclFilter = new DynamicACLFilter(cache, pluginSettings, seed, client, contextFactory, documentFactory, threadPool, requestUtils);
 		this.kibanaReindexFilter = new KibanaUserReindexFilter(pluginSettings);
 		OpenShiftElasticSearchService osElasticSearvice = new OpenShiftElasticSearchService(settings, client, cache);
 		

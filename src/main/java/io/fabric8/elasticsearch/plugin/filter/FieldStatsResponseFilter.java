@@ -16,6 +16,7 @@
 
 package io.fabric8.elasticsearch.plugin.filter;
 
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequest;
@@ -25,7 +26,6 @@ import org.elasticsearch.action.fieldstats.FieldStatsResponse;
 import org.elasticsearch.action.support.ActionFilter;
 import org.elasticsearch.action.support.ActionFilterChain;
 import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.tasks.Task;
@@ -45,7 +45,7 @@ import io.fabric8.elasticsearch.plugin.PluginClient;
 public class FieldStatsResponseFilter implements ActionFilter {
     
     public static final String INDICES_FIELD_STATS_READ_ACTION = "indices:data/read/field_stats";
-    private static final ESLogger LOGGER = Loggers.getLogger(FieldStatsResponseFilter.class);
+    private static final Logger LOGGER = Loggers.getLogger(FieldStatsResponseFilter.class);
     private final PluginClient client;
     
     @Inject
@@ -57,26 +57,19 @@ public class FieldStatsResponseFilter implements ActionFilter {
     public int order() {
         return Integer.MIN_VALUE;
     }
-    
-    @SuppressWarnings("rawtypes")
-    @Override
-    public  void apply(String action, ActionResponse response, ActionListener listener, ActionFilterChain chain) {
-        chain.proceed(action, response, listener);
-    }
-    
-    @SuppressWarnings("rawtypes")
+
+    @SuppressWarnings({ "rawtypes", "unchecked" })
     @Override
     public void apply(final Task task, final String action, final ActionRequest request, final ActionListener listener,
             final ActionFilterChain chain) {
         chain.proceed(task, action, request, new ActionListener<ActionResponse>() {
 
-            @SuppressWarnings("unchecked")
             @Override
             public void onResponse(ActionResponse response) {
                 if(INDICES_FIELD_STATS_READ_ACTION.equals(action) && response instanceof FieldStatsResponse) {
                     if(((FieldStatsResponse)response).getIndicesMergedFieldStats().isEmpty()) {
                         LOGGER.trace("Modifying the response to be {}", RestStatus.NO_CONTENT);
-                        Throwable err = new ElasticsearchException("The index returned an empty result. "
+                        ElasticsearchException err = new ElasticsearchException("The index returned an empty result. "
                                 + "You can use the Time Picker to change the time filter or select a higher time interval",
                                 RestStatus.NO_CONTENT);
                         
@@ -88,9 +81,9 @@ public class FieldStatsResponseFilter implements ActionFilter {
             }
 
             @Override
-            public void onFailure(Throwable e) {
+            public void onFailure(Exception e) {
                 LOGGER.trace("Evaluating failure for action '{}' to see if we need to change from a 403", action);
-                Throwable err = e;
+                Exception err = e;
                 if( INDICES_FIELD_STATS_READ_ACTION.equals(action) && request instanceof FieldStatsRequest) {
                     for (String index : ((FieldStatsRequest)request).indices()) {
                         if(!client.indexExists(index)) {

@@ -82,7 +82,7 @@ public class DynamicACLFilter implements ConfigurationSettings {
 
     public DynamicACLFilter(final UserProjectCache cache, final PluginSettings settings, final KibanaSeed seed,
             final Client client, final OpenshiftRequestContextFactory contextFactory,
-            final SearchGuardSyncStrategyFactory documentFactory, ThreadPool threadPool
+            final SearchGuardSyncStrategyFactory documentFactory, ThreadPool threadPool,
             final RequestUtils utils) {
     	this.threadPool = threadPool;
         this.client = client;

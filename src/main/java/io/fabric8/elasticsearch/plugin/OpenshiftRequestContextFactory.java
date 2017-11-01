@@ -29,9 +29,8 @@ import java.util.Set;
 
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.rest.RestRequest;
@@ -48,7 +47,7 @@ import io.fabric8.openshift.client.OpenShiftClient;
  */
 public class OpenshiftRequestContextFactory  {
 
-    private static final ESLogger LOGGER = Loggers.getLogger(OpenshiftRequestContextFactory.class);
+    private static final Logger LOGGER = Loggers.getLogger(OpenshiftRequestContextFactory.class);
     
     private final OpenshiftClientFactory clientFactory;
     private final RequestUtils utils;
@@ -56,7 +55,6 @@ public class OpenshiftRequestContextFactory  {
     private final String kibanaPrefix;
     private String kibanaIndexMode;
 
-    @Inject
     public OpenshiftRequestContextFactory(final Settings settings, final RequestUtils utils, final OpenshiftClientFactory clientFactory) {
         this.clientFactory = clientFactory;
         this.utils = utils;
@@ -106,15 +104,16 @@ public class OpenshiftRequestContextFactory  {
             LOGGER.debug("Handling Request... {}", request.uri());
             if(LOGGER.isTraceEnabled()) {
                 List<String> headers = new ArrayList<>();
-                for (Entry<String, String> entry : request.headers()) {
+                for (Entry<String, List<String>> entry : request.getHeaders().entrySet()) {
                     if(RequestUtils.AUTHORIZATION_HEADER.equals(entry.getKey())){
                         headers.add(entry.getKey() + "=Bearer <REDACTED>");
                     }else {
                         headers.add(entry.getKey() + "=" + entry.getValue());
                     }
                 }
-                LOGGER.trace("Request headers: {}", request.headers());
-                LOGGER.trace("Request context: {}", request.getContext());
+                LOGGER.trace("Request headers: {}", headers);
+                //@TODO FIX CONTEXT
+//                LOGGER.trace("Request context: {}", request.getContext());
             }
             LOGGER.debug("Evaluating request for user '{}' with a {} token", user,
                     (StringUtils.isNotEmpty(token) ? "non-empty" : "empty"));

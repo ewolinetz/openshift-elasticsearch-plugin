@@ -42,8 +42,6 @@ import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.search.SearchHit;
@@ -75,7 +73,6 @@ public class KibanaSeed implements ConfigurationSettings {
     private final String defaultKibanaIndex;
     private final PluginSettings settings;
 
-    @Inject
     public KibanaSeed(final PluginSettings settings, final IndexMappingLoader loader, final PluginClient pluginClient)  {
         this.mappingLoader = loader;
         this.pluginClient = pluginClient;

@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionRequestBuilder;
 import org.elasticsearch.action.admin.indices.alias.IndicesAliasesRequestBuilder;
 import org.elasticsearch.action.admin.indices.alias.IndicesAliasesResponse;
@@ -32,8 +33,6 @@ import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 
 import com.floragunn.searchguard.support.ConfigConstants;
@@ -45,10 +44,9 @@ import com.google.common.collect.UnmodifiableIterator;
  */
 public class PluginClient {
 
-    private static ESLogger LOGGER = Loggers.getLogger(PluginClient.class);
+    private static Logger LOGGER = Loggers.getLogger(PluginClient.class);
     private final Client client;
 
-    @Inject
     public PluginClient(Client client) {
         this.client = client;
     }

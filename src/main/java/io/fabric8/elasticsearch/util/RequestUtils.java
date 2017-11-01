@@ -17,8 +17,8 @@
 package io.fabric8.elasticsearch.util;
 
 import org.apache.commons.lang.ObjectUtils;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.http.netty.NettyHttpRequest;
@@ -34,7 +34,7 @@ import io.fabric8.openshift.client.NamespacedOpenShiftClient;
 
 public class RequestUtils implements ConfigurationSettings  {
     
-    private static final ESLogger LOGGER = Loggers.getLogger(RequestUtils.class);
+    private static final Logger LOGGER = Loggers.getLogger(RequestUtils.class);
     public static final String AUTHORIZATION_HEADER = "Authorization";
 
     private String proxyUserHeader;
