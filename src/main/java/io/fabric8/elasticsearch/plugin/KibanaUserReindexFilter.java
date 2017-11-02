@@ -47,29 +47,30 @@ public class KibanaUserReindexFilter implements RestHandler, ConfigurationSettin
 
     @Override
     public boolean supportsContentStream() {
-    	return true;
+        return true;
     }
 
-	@Override
-	public void handleRequest(RestRequest request, RestChannel channel, NodeClient client) throws Exception {
-//    public void process(RestRequest request, RestChannel channel, RestFilterChain chain) throws Exception {
+    @Override
+    public void handleRequest(RestRequest request, RestChannel channel, NodeClient client) throws Exception {
+        // public void process(RestRequest request, RestChannel channel, RestFilterChain
+        // chain) throws Exception {
         try {
-            OpenshiftRequestContext userContext = (OpenshiftRequestContext) 
-                    ObjectUtils.defaultIfNull(request.getFromContext(OPENSHIFT_REQUEST_CONTEXT), OpenshiftRequestContext.EMPTY);
+            OpenshiftRequestContext userContext = (OpenshiftRequestContext) ObjectUtils
+                    .defaultIfNull(request.getFromContext(OPENSHIFT_REQUEST_CONTEXT), OpenshiftRequestContext.EMPTY);
             final String user = userContext.getUser();
             final String kibanaIndex = userContext.getKibanaIndex();
             final String requestedIndex = getRequestedIndex(request);
 
             LOG.debug("user: '{}'/ requested index: '{}'/ kibana index: '{}'", user, requestedIndex, kibanaIndex);
 
-            if (StringUtils.isNotEmpty(user) && StringUtils.isNotEmpty(requestedIndex)){
-                if(requestedIndex.equalsIgnoreCase(defaultKibanaIndex)) {
+            if (StringUtils.isNotEmpty(user) && StringUtils.isNotEmpty(requestedIndex)) {
+                if (requestedIndex.equalsIgnoreCase(defaultKibanaIndex)) {
                     LOG.debug("Request is for a kibana index. Updating to '{}' for user '{}'", kibanaIndex, user);
                     // update the request URI here
                     request = updateRequestIndex(request, requestedIndex, kibanaIndex);
-                    
+
                     LOG.debug("URI for request is '{}' after update", request.uri());
-                }else if(requestedIndex.startsWith("_mget")) {
+                } else if (requestedIndex.startsWith("_mget")) {
                     LOG.debug("_mget Request for a kibana index. Updating to '{}' for user '{}'", kibanaIndex, user);
                     request = updateMGetRequest(request, ".kibana", kibanaIndex);
 

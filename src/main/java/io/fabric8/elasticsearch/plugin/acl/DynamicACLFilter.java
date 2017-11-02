@@ -82,9 +82,8 @@ public class DynamicACLFilter implements ConfigurationSettings {
 
     public DynamicACLFilter(final UserProjectCache cache, final PluginSettings settings, final KibanaSeed seed,
             final Client client, final OpenshiftRequestContextFactory contextFactory,
-            final SearchGuardSyncStrategyFactory documentFactory, ThreadPool threadPool,
-            final RequestUtils utils) {
-    	this.threadPool = threadPool;
+            final SearchGuardSyncStrategyFactory documentFactory, ThreadPool threadPool, final RequestUtils utils) {
+        this.threadPool = threadPool;
         this.client = client;
         this.cache = cache;
         this.kibanaSeed = seed;
@@ -100,18 +99,17 @@ public class DynamicACLFilter implements ConfigurationSettings {
 
     public RestHandler wrap(RestHandler original, UnaryOperator<RestHandler> unaryOperator) {
         return new RestHandler() {
-            
+
             @Override
             public void handleRequest(RestRequest request, RestChannel channel, NodeClient client) throws Exception {
-                if(continueProcessing(request, channel, client))
-                {
+                if (continueProcessing(request, channel, client)) {
                     unaryOperator.apply(original);
                 }
             }
         };
     }
-    
-	public boolean continueProcessing(RestRequest request, RestChannel channel, NodeClient client) throws Exception {
+
+    public boolean continueProcessing(RestRequest request, RestChannel channel, NodeClient client) throws Exception {
         boolean continueProcessing = true;
         try {
             if (enabled) {
@@ -121,7 +119,8 @@ public class DynamicACLFilter implements ConfigurationSettings {
                 final OpenshiftRequestContext requestContext = contextFactory.create(request, cache);
                 request = utils.modifyRequest(request, requestContext);
                 threadPool.getThreadContext().putTransient(OPENSHIFT_REQUEST_CONTEXT, requestContext);
-                if (requestContext.isAuthenticated() && !cache.hasUser(requestContext.getUser(), requestContext.getToken())) {
+                if (requestContext.isAuthenticated()
+                        && !cache.hasUser(requestContext.getUser(), requestContext.getToken())) {
                     if (updateCache(requestContext, kbnVersion)) {
                         kibanaSeed.setDashboards(requestContext, client, kbnVersion, cdmProjectPrefix);
                         syncAcl(requestContext);
@@ -165,7 +164,8 @@ public class DynamicACLFilter implements ConfigurationSettings {
             LOGGER.debug("Loading SearchGuard ACL...");
 
             final MultiGetRequest mget = new MultiGetRequest();
-//            mget.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true"); //header needed here
+            // mget.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true"); //header
+            // needed here
             mget.refresh(true);
             mget.realtime(true);
             mget.add(searchGuardIndex, SEARCHGUARD_ROLE_TYPE, SEARCHGUARD_CONFIG_ID);
@@ -175,9 +175,10 @@ public class DynamicACLFilter implements ConfigurationSettings {
             SearchGuardRolesMapping rolesMapping = null;
             MultiGetResponse response = client.multiGet(mget).actionGet();
             for (MultiGetItemResponse item : response.getResponses()) {
-                if(!item.isFailed()) {
-                    if(LOGGER.isDebugEnabled()){
-                        LOGGER.debug("Read in {}: {}", item.getType(), XContentHelper.convertToJson(item.getResponse().getSourceAsBytesRef(), true, true, XContentType.JSON));
+                if (!item.isFailed()) {
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("Read in {}: {}", item.getType(), XContentHelper.convertToJson(
+                                item.getResponse().getSourceAsBytesRef(), true, true, XContentType.JSON));
                     }
                     switch (item.getType()) {
                     case SEARCHGUARD_ROLE_TYPE:
@@ -187,19 +188,19 @@ public class DynamicACLFilter implements ConfigurationSettings {
                         rolesMapping = new SearchGuardRolesMapping().load(item.getResponse().getSource());
                         break;
                     }
-                }else {
+                } else {
                     LOGGER.error("There was a failure loading document type {}", item.getFailure(), item.getType());
                 }
             }
 
-            if(roles == null || rolesMapping == null) {
+            if (roles == null || rolesMapping == null) {
                 return;
             }
 
             LOGGER.debug("Syncing from cache to ACL...");
             RolesMappingSyncStrategy rolesMappingSync = documentFactory.createRolesMappingSyncStrategy(rolesMapping);
             rolesMappingSync.syncFrom(cache);
-            
+
             RolesSyncStrategy rolesSync = documentFactory.createRolesSyncStrategy(roles);
             rolesSync.syncFrom(cache);
 
@@ -216,32 +217,30 @@ public class DynamicACLFilter implements ConfigurationSettings {
         BulkRequestBuilder builder = this.client.prepareBulk().setRefreshPolicy(RefreshPolicy.IMMEDIATE);
 
         for (SearchGuardACLDocument doc : documents) {
-            UpdateRequest update = this.client
-                    .prepareUpdate(searchGuardIndex, doc.getType(), SEARCHGUARD_CONFIG_ID)
-//                    .setConsistencyLevel(WriteConsistencyLevel.DEFAULT)
-                    .setDoc(doc.toXContentBuilder())
-                    .request();
+            UpdateRequest update = this.client.prepareUpdate(searchGuardIndex, doc.getType(), SEARCHGUARD_CONFIG_ID)
+                    // .setConsistencyLevel(WriteConsistencyLevel.DEFAULT)
+                    .setDoc(doc.toXContentBuilder()).request();
             builder.add(update);
-            if(LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Built {} update request: {}", doc.getType(), XContentHelper.convertToJson(doc.toXContentBuilder().bytes(),true, true, XContentType.JSON));
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Built {} update request: {}", doc.getType(),
+                        XContentHelper.convertToJson(doc.toXContentBuilder().bytes(), true, true, XContentType.JSON));
             }
         }
         BulkRequest request = builder.request();
-//        request.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
+        // request.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
         BulkResponse response = this.client.bulk(request).actionGet();
 
-        if(!response.hasFailures()) {
+        if (!response.hasFailures()) {
             ConfigUpdateRequest confRequest = new ConfigUpdateRequest(SEARCHGUARD_INITIAL_CONFIGS);
-//            confRequest.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
-            ConfigUpdateResponse cur = this.client
-                    .execute(ConfigUpdateAction.INSTANCE, confRequest).actionGet();
+            // confRequest.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
+            ConfigUpdateResponse cur = this.client.execute(ConfigUpdateAction.INSTANCE, confRequest).actionGet();
             final int size = cur.getNodes().size();
             if (size > 0) {
                 LOGGER.debug("Successfully reloaded config with '{}' nodes", size);
-            }else {
+            } else {
                 LOGGER.warn("Failed to reloaded configs", size);
             }
-        }else {
+        } else {
             LOGGER.error("Unable to write ACL {}", response.buildFailureMessage());
         }
     }

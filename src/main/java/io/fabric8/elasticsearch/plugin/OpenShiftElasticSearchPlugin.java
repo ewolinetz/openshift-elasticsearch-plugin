@@ -73,135 +73,140 @@ import io.fabric8.elasticsearch.util.RequestUtils;
 
 public class OpenShiftElasticSearchPlugin extends Plugin implements ConfigurationSettings, ActionPlugin, NetworkPlugin {
 
-	private static final Logger LOG = Loggers.getLogger(OpenShiftElasticSearchPlugin.class);
+    private static final Logger LOG = Loggers.getLogger(OpenShiftElasticSearchPlugin.class);
     private final Settings settings;
-	private KibanaUserReindexFilter kibanaReindexFilter;
-	private DynamicACLFilter aclFilter;
-	private SearchGuardPlugin sgPlugin;
+    private KibanaUserReindexFilter kibanaReindexFilter;
+    private DynamicACLFilter aclFilter;
+    private SearchGuardPlugin sgPlugin;
 
     public OpenShiftElasticSearchPlugin(final Settings settings) {
         this.settings = settings;
     }
-    
+
     public Collection<Object> createComponents(Client client, ClusterService clusterService, ThreadPool threadPool,
             ResourceWatcherService resourceWatcherService, ScriptService scriptService,
-            NamedXContentRegistry xContentRegistry) {
-    	
-    	final UserProjectCache cache = new UserProjectCacheMapAdapter();
-    	final PluginSettings pluginSettings = new PluginSettings(settings);
-    	final IndexMappingLoader indexMappingLoader = new IndexMappingLoader(settings);
-    	final PluginClient pluginClient = new PluginClient(client);
-		final RequestUtils requestUtils = new RequestUtils(settings);
-		final OpenshiftClientFactory clientFactory = new OpenshiftClientFactory();
-		final OpenshiftRequestContextFactory contextFactory = new OpenshiftRequestContextFactory(settings, requestUtils, clientFactory);
-		final SearchGuardSyncStrategyFactory documentFactory = new SearchGuardSyncStrategyFactory(pluginSettings);
-		final KibanaSeed seed = new KibanaSeed(pluginSettings, indexMappingLoader, pluginClient);
-		sgPlugin = new SearchGuardPlugin(settings);
+            NamedXContentRegistry namedXContentRegistry) {
 
-		this.aclFilter = new DynamicACLFilter(cache, pluginSettings, seed, client, contextFactory, documentFactory, threadPool, requestUtils);
-		this.kibanaReindexFilter = new KibanaUserReindexFilter(pluginSettings);
-		OpenShiftElasticSearchService osElasticSearvice = new OpenShiftElasticSearchService(settings, client, cache);
-		
-    	List<Object> list = new ArrayList<>();
-    	list.add(cache);
-    	list.add(pluginSettings);
-    	list.add(indexMappingLoader);
-    	list.add(pluginClient);
-    	list.add(requestUtils);
-    	list.add(clientFactory);
-    	list.add(contextFactory);
-    	list.add(documentFactory);
-    	list.add(seed);
-    	list.add(aclFilter);
-    	list.add(kibanaReindexFilter);
-		list.add(osElasticSearvice);
-    	list.add(new FieldStatsResponseFilter(pluginClient));
-		list.addAll(sgPlugin.createComponents(client, clusterService, threadPool, resourceWatcherService, scriptService, xContentRegistry));
-    	return list;
+        final UserProjectCache cache = new UserProjectCacheMapAdapter();
+        final PluginSettings pluginSettings = new PluginSettings(settings);
+        final IndexMappingLoader indexMappingLoader = new IndexMappingLoader(settings);
+        final PluginClient pluginClient = new PluginClient(client);
+        final RequestUtils requestUtils = new RequestUtils(settings);
+        final OpenshiftClientFactory clientFactory = new OpenshiftClientFactory();
+        final OpenshiftRequestContextFactory contextFactory = new OpenshiftRequestContextFactory(settings, requestUtils,
+                clientFactory);
+        final SearchGuardSyncStrategyFactory documentFactory = new SearchGuardSyncStrategyFactory(pluginSettings);
+        final KibanaSeed seed = new KibanaSeed(pluginSettings, indexMappingLoader, pluginClient);
+        sgPlugin = new SearchGuardPlugin(settings);
+
+        this.aclFilter = new DynamicACLFilter(cache, pluginSettings, seed, client, contextFactory, documentFactory,
+                threadPool, requestUtils);
+        this.kibanaReindexFilter = new KibanaUserReindexFilter(pluginSettings);
+        OpenShiftElasticSearchService osElasticSearvice = new OpenShiftElasticSearchService(settings, client, cache);
+
+        List<Object> list = new ArrayList<>();
+        list.add(cache);
+        list.add(pluginSettings);
+        list.add(indexMappingLoader);
+        list.add(pluginClient);
+        list.add(requestUtils);
+        list.add(clientFactory);
+        list.add(contextFactory);
+        list.add(documentFactory);
+        list.add(seed);
+        list.add(aclFilter);
+        list.add(kibanaReindexFilter);
+        list.add(osElasticSearvice);
+        list.add(new FieldStatsResponseFilter(pluginClient));
+        list.addAll(sgPlugin.createComponents(client, clusterService, threadPool, resourceWatcherService, scriptService,
+                namedXContentRegistry));
+        return list;
     }
-    
-    @Override
-	public UnaryOperator<RestHandler> getRestHandlerWrapper(ThreadContext threadContext) {
-		return (rh) -> aclFilter.wrap(rh, sgPlugin.getRestHandlerWrapper(threadContext));
-	}
-
-	@Override
-	public List<RestHandler> getRestHandlers(Settings settings, RestController restController,
-			ClusterSettings clusterSettings, IndexScopedSettings indexScopedSettings, SettingsFilter settingsFilter,
-			IndexNameExpressionResolver indexNameExpressionResolver, Supplier<DiscoveryNodes> nodesInCluster) {
-    	List<RestHandler> list = new ArrayList<>();
-    	list.addAll(sgPlugin.getRestHandlers(settings, restController, clusterSettings, indexScopedSettings, settingsFilter, indexNameExpressionResolver, nodesInCluster));
-    	list.add(kibanaReindexFilter);
-		return list;
-	}
-	
-	@Override
-	public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
-		List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> list = new ArrayList<>();
-		list.addAll(sgPlugin.getActions());
-		return list;
-	}
 
     @Override
-	public void onIndexModule(IndexModule indexModule) {
-		sgPlugin.onIndexModule(indexModule);
-	}
+    public UnaryOperator<RestHandler> getRestHandlerWrapper(ThreadContext threadContext) {
+        return (rh) -> aclFilter.wrap(rh, sgPlugin.getRestHandlerWrapper(threadContext));
+    }
 
-	@Override
-	public List<Class<? extends ActionFilter>> getActionFilters() {
-    	List<Class<? extends ActionFilter>> list =  Arrays.asList(FieldStatsResponseFilter.class, KibanaUserReindexAction.class);
-    	list.addAll(sgPlugin.getActionFilters());
-    	return list;
-	}
-	
-	@Override
-	public List<TransportInterceptor> getTransportInterceptors(ThreadContext threadContext) {
-		return sgPlugin.getTransportInterceptors(threadContext);
-	}
-	
-	@Override
-	public Map<String, Supplier<Transport>> getTransports(Settings settings, ThreadPool threadPool, BigArrays bigArrays,
-			CircuitBreakerService circuitBreakerService, NamedWriteableRegistry namedWriteableRegistry,
-			NetworkService networkService) {
-		return sgPlugin.getTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry, networkService);
-	}
+    @Override
+    public List<RestHandler> getRestHandlers(Settings settings, RestController restController,
+            ClusterSettings clusterSettings, IndexScopedSettings indexScopedSettings, SettingsFilter settingsFilter,
+            IndexNameExpressionResolver indexNameExpressionResolver, Supplier<DiscoveryNodes> nodesInCluster) {
+        List<RestHandler> list = new ArrayList<>();
+        list.addAll(sgPlugin.getRestHandlers(settings, restController, clusterSettings, indexScopedSettings,
+                settingsFilter, indexNameExpressionResolver, nodesInCluster));
+        list.add(kibanaReindexFilter);
+        return list;
+    }
 
-	@Override
-	public Map<String, Supplier<HttpServerTransport>> getHttpTransports(Settings settings, ThreadPool threadPool,
-			BigArrays bigArrays, CircuitBreakerService circuitBreakerService,
-			NamedWriteableRegistry namedWriteableRegistry, NamedXContentRegistry xContentRegistry,
-			NetworkService networkService, Dispatcher dispatcher) {
-		return sgPlugin.getHttpTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry, xContentRegistry, networkService, dispatcher);
-	}
-	
+    @Override
+    public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
+        List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> list = new ArrayList<>();
+        list.addAll(sgPlugin.getActions());
+        return list;
+    }
 
-	@Override
-	public Collection<Class<? extends LifecycleComponent>> getGuiceServiceClasses() {
-		return sgPlugin.getGuiceServiceClasses();
-	}
-	
-	@Override
-	public Settings additionalSettings() {
-		return sgPlugin.additionalSettings();
-	}
+    @Override
+    public void onIndexModule(IndexModule indexModule) {
+        sgPlugin.onIndexModule(indexModule);
+    }
 
-	@Override
-	public List<Setting<?>> getSettings() {
-		return sgPlugin.getSettings();
-	}
+    @Override
+    public List<Class<? extends ActionFilter>> getActionFilters() {
+        List<Class<? extends ActionFilter>> list = Arrays.asList(FieldStatsResponseFilter.class,
+                KibanaUserReindexAction.class);
+        list.addAll(sgPlugin.getActionFilters());
+        return list;
+    }
 
-	@Override
-	public List<String> getSettingsFilter() {
-		return sgPlugin.getSettingsFilter();
-	}
+    @Override
+    public List<TransportInterceptor> getTransportInterceptors(ThreadContext threadContext) {
+        return sgPlugin.getTransportInterceptors(threadContext);
+    }
 
-	@Override
-	public void close() throws IOException {
-		if(sgPlugin != null) {
-			sgPlugin.close();
-		}
-		super.close();
-	}
+    @Override
+    public Map<String, Supplier<Transport>> getTransports(Settings settings, ThreadPool threadPool, BigArrays bigArrays,
+            CircuitBreakerService circuitBreakerService, NamedWriteableRegistry namedWriteableRegistry,
+            NetworkService networkService) {
+        return sgPlugin.getTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry,
+                networkService);
+    }
 
-	
+    @Override
+    public Map<String, Supplier<HttpServerTransport>> getHttpTransports(Settings settings, ThreadPool threadPool,
+            BigArrays bigArrays, CircuitBreakerService circuitBreakerService,
+            NamedWriteableRegistry namedWriteableRegistry, NamedXContentRegistry namedXContentRegistry,
+            NetworkService networkService, Dispatcher dispatcher) {
+        return sgPlugin.getHttpTransports(settings, threadPool, bigArrays, circuitBreakerService,
+                namedWriteableRegistry, namedXContentRegistry, networkService, dispatcher);
+    }
+
+    @Override
+    public Collection<Class<? extends LifecycleComponent>> getGuiceServiceClasses() {
+        return sgPlugin.getGuiceServiceClasses();
+    }
+
+    @Override
+    public Settings additionalSettings() {
+        return sgPlugin.additionalSettings();
+    }
+
+    @Override
+    public List<Setting<?>> getSettings() {
+        return sgPlugin.getSettings();
+    }
+
+    @Override
+    public List<String> getSettingsFilter() {
+        return sgPlugin.getSettingsFilter();
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (sgPlugin != null) {
+            sgPlugin.close();
+        }
+        super.close();
+    }
+
 }

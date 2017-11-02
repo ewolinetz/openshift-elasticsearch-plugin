@@ -27,7 +27,7 @@ import org.elasticsearch.common.settings.Settings;
 public class PluginSettings implements ConfigurationSettings {
 
     private static final Logger LOGGER = Loggers.getLogger(PluginSettings.class);
-    
+
     private String kibanaIndexMode;
     private String roleStrategy;
     private final String cdmProjectPrefix;
@@ -39,16 +39,15 @@ public class PluginSettings implements ConfigurationSettings {
     private final Boolean reWriteEnabled;
     private final Settings settings;
 
-    
     public PluginSettings(final Settings settings) {
-    	this.settings = settings;
+        this.settings = settings;
         this.kibanaIndexMode = settings.get(OPENSHIFT_KIBANA_INDEX_MODE, KibanaIndexMode.DEFAULT_MODE);
-        if(!ArrayUtils.contains(new String [] {UNIQUE, SHARED_OPS, SHARED_NON_OPS}, kibanaIndexMode.toLowerCase())) {
+        if (!ArrayUtils.contains(new String[] { UNIQUE, SHARED_OPS, SHARED_NON_OPS }, kibanaIndexMode.toLowerCase())) {
             this.kibanaIndexMode = UNIQUE;
         }
-        
+
         this.roleStrategy = settings.get(OPENSHIFT_ACL_ROLE_STRATEGY, DEFAULT_ACL_ROLE_STRATEGY);
-        if(!ArrayUtils.contains(new String [] {PROJECT, USER}, roleStrategy.toLowerCase())) {
+        if (!ArrayUtils.contains(new String[] { PROJECT, USER }, roleStrategy.toLowerCase())) {
             this.kibanaIndexMode = USER;
         }
 
@@ -67,27 +66,27 @@ public class PluginSettings implements ConfigurationSettings {
         LOGGER.debug("roleStrategy: {}", this.roleStrategy);
 
     }
-    
+
     public Settings getSettings() {
-    	return this.settings;
+        return this.settings;
     }
-    
+
     public String getRoleStrategy() {
         return this.roleStrategy;
     }
-    
+
     public String getKibanaIndexMode() {
         return kibanaIndexMode;
     }
-    
+
     public String getCdmProjectPrefix() {
         return cdmProjectPrefix;
     }
-    
+
     public String getDefaultKibanaIndex() {
         return defaultKibanaIndex;
     }
-    
+
     public String getSearchGuardIndex() {
         return searchGuardIndex;
     }
@@ -105,7 +104,7 @@ public class PluginSettings implements ConfigurationSettings {
     }
 
     public Boolean isKibanaRewriteEnabled() {
-    	return reWriteEnabled;
+        return reWriteEnabled;
     }
 
     public void setKibanaIndexMode(String kibanaIndexMode) {

@@ -45,24 +45,26 @@ import io.fabric8.openshift.client.OpenShiftClient;
 /**
  * Context of information regarding a use
  */
-public class OpenshiftRequestContextFactory  {
+public class OpenshiftRequestContextFactory {
 
     private static final Logger LOGGER = Loggers.getLogger(OpenshiftRequestContextFactory.class);
-    
+
     private final OpenshiftClientFactory clientFactory;
     private final RequestUtils utils;
     private final String[] operationsProjects;
     private final String kibanaPrefix;
     private String kibanaIndexMode;
 
-    public OpenshiftRequestContextFactory(final Settings settings, final RequestUtils utils, final OpenshiftClientFactory clientFactory) {
+    public OpenshiftRequestContextFactory(final Settings settings, final RequestUtils utils,
+            final OpenshiftClientFactory clientFactory) {
         this.clientFactory = clientFactory;
         this.utils = utils;
         this.operationsProjects = settings.getAsArray(ConfigurationSettings.OPENSHIFT_CONFIG_OPS_PROJECTS,
                 ConfigurationSettings.DEFAULT_OPENSHIFT_OPS_PROJECTS);
-        this.kibanaPrefix = settings.get(ConfigurationSettings.KIBANA_CONFIG_INDEX_NAME, ConfigurationSettings.DEFAULT_USER_PROFILE_PREFIX);
+        this.kibanaPrefix = settings.get(ConfigurationSettings.KIBANA_CONFIG_INDEX_NAME,
+                ConfigurationSettings.DEFAULT_USER_PROFILE_PREFIX);
         this.kibanaIndexMode = settings.get(ConfigurationSettings.OPENSHIFT_KIBANA_INDEX_MODE, UNIQUE);
-        if(!ArrayUtils.contains(new String [] {UNIQUE, SHARED_OPS, SHARED_NON_OPS}, kibanaIndexMode.toLowerCase())) {
+        if (!ArrayUtils.contains(new String[] { UNIQUE, SHARED_OPS, SHARED_NON_OPS }, kibanaIndexMode.toLowerCase())) {
             this.kibanaIndexMode = UNIQUE;
         }
         LOGGER.info("Using kibanaIndexMode: '{}'", this.kibanaIndexMode);
@@ -71,9 +73,11 @@ public class OpenshiftRequestContextFactory  {
     /**
      * Create a user context from the given request
      * 
-     * @param   cache - The cache of user projects to create ACLs
-     * @return  an OpenshiftRequestContext 
-     * @throws  All exceptions
+     * @param cache
+     *            - The cache of user projects to create ACLs
+     * @return an OpenshiftRequestContext
+     * @throws All
+     *             exceptions
      */
     public OpenshiftRequestContext create(final RestRequest request, final UserProjectCache cache) throws Exception {
         logRequest(request, cache);
@@ -81,39 +85,40 @@ public class OpenshiftRequestContextFactory  {
         Set<String> projects = new HashSet<>();
         boolean isClusterAdmin = false;
         String user = utils.getUser(request);
-        if(user.contains("\\")){
+        if (user.contains("\\")) {
             user = user.replace("\\", "/");
             utils.setUser(request, user);
         }
 
         String token = utils.getBearerToken(request);
-        if (StringUtils.isNotBlank(user) && StringUtils.isNotBlank(token)){
+        if (StringUtils.isNotBlank(user) && StringUtils.isNotBlank(token)) {
             isClusterAdmin = utils.isOperationsUser(request);
-                
-            if(!cache.hasUser(user, token)) {
+
+            if (!cache.hasUser(user, token)) {
                 projects = listProjectsFor(user, token);
             }
         }
-        return new OpenshiftRequestContext(user, token, isClusterAdmin, projects, getKibanaIndex(user, isClusterAdmin), this.kibanaIndexMode);
+        return new OpenshiftRequestContext(user, token, isClusterAdmin, projects, getKibanaIndex(user, isClusterAdmin),
+                this.kibanaIndexMode);
     }
-    
+
     private void logRequest(final RestRequest request, final UserProjectCache cache) {
         if (LOGGER.isDebugEnabled()) {
             String user = utils.getUser(request);
             String token = utils.getBearerToken(request);
             LOGGER.debug("Handling Request... {}", request.uri());
-            if(LOGGER.isTraceEnabled()) {
+            if (LOGGER.isTraceEnabled()) {
                 List<String> headers = new ArrayList<>();
                 for (Entry<String, List<String>> entry : request.getHeaders().entrySet()) {
-                    if(RequestUtils.AUTHORIZATION_HEADER.equals(entry.getKey())){
+                    if (RequestUtils.AUTHORIZATION_HEADER.equals(entry.getKey())) {
                         headers.add(entry.getKey() + "=Bearer <REDACTED>");
-                    }else {
+                    } else {
                         headers.add(entry.getKey() + "=" + entry.getValue());
                     }
                 }
                 LOGGER.trace("Request headers: {}", headers);
-                //@TODO FIX CONTEXT
-//                LOGGER.trace("Request context: {}", request.getContext());
+                // @TODO FIX CONTEXT
+                // LOGGER.trace("Request context: {}", request.getContext());
             }
             LOGGER.debug("Evaluating request for user '{}' with a {} token", user,
                     (StringUtils.isNotEmpty(token) ? "non-empty" : "empty"));
@@ -146,32 +151,34 @@ public class OpenshiftRequestContextFactory  {
         }
         return names;
     }
-    
+
     private boolean isBlacklistProject(String project) {
         return ArrayUtils.contains(operationsProjects, project.toLowerCase());
     }
-    
+
     private String getKibanaIndex(String username, boolean isOpsUser) {
         return getKibanaIndex(kibanaPrefix, kibanaIndexMode, username, isOpsUser);
     }
-    
-    public static String getKibanaIndex(final String kibanaPrefix, final String kibanaIndexMode, final String username, final boolean isOpsUser) {
-        if(StringUtils.isBlank(username)) {
+
+    public static String getKibanaIndex(final String kibanaPrefix, final String kibanaIndexMode, final String username,
+            final boolean isOpsUser) {
+        if (StringUtils.isBlank(username)) {
             return "";
         }
-        if((SHARED_OPS.equals(kibanaIndexMode) || SHARED_NON_OPS.equals(kibanaIndexMode)) && isOpsUser) {
+        if ((SHARED_OPS.equals(kibanaIndexMode) || SHARED_NON_OPS.equals(kibanaIndexMode)) && isOpsUser) {
             return kibanaPrefix;
         }
-        if(SHARED_NON_OPS.equals(kibanaIndexMode)) {
+        if (SHARED_NON_OPS.equals(kibanaIndexMode)) {
             return kibanaPrefix + "_non_ops";
         }
         return kibanaPrefix + "." + getUsernameHash(username);
-        
+
     }
-    
+
     public static class OpenshiftRequestContext {
-        
-        public static final OpenshiftRequestContext EMPTY = new OpenshiftRequestContext("","",false, new HashSet<String>(), "", UNIQUE);
+
+        public static final OpenshiftRequestContext EMPTY = new OpenshiftRequestContext("", "", false,
+                new HashSet<String>(), "", UNIQUE);
 
         private final String user;
         private final String token;
@@ -180,7 +187,7 @@ public class OpenshiftRequestContextFactory  {
         private final String kibanaIndex;
         private final String kibanaIndexMode;
 
-        protected OpenshiftRequestContext(final String user, final String token, boolean isClusterAdmin, 
+        protected OpenshiftRequestContext(final String user, final String token, boolean isClusterAdmin,
                 Set<String> projects, String kibanaIndex, final String kibanaIndexMode) {
             this.user = user;
             this.token = token;
@@ -214,16 +221,17 @@ public class OpenshiftRequestContextFactory  {
         /**
          * The Set of projects with UUID
          * 
-         * @return the set of project names formatted with their UUID (e.g. project.UUID)
+         * @return the set of project names formatted with their UUID (e.g.
+         *         project.UUID)
          */
         public Set<String> getProjects() {
             return projects;
         }
-        
+
         public String getKibanaIndex() {
             return this.kibanaIndex;
         }
-        
+
         public String getKibanaIndexMode() {
             return this.kibanaIndexMode;
         }
