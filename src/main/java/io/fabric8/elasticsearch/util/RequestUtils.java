@@ -74,7 +74,7 @@ public class RequestUtils implements ConfigurationSettings  {
 
     public void setUser(ThreadContext threadContext, String user) {
         LOGGER.debug("Modifying header '{}' to be '{}'", proxyUserHeader, user);
-        threadContext.putHeader(proxyUserHeader, user);
+        threadContext.putTransient(proxyUserHeader, user);
     }
     
     /**
@@ -84,7 +84,7 @@ public class RequestUtils implements ConfigurationSettings  {
      */
     public void modifyRequest(ThreadContext threadContext, OpenshiftRequestContext context) {
         if(!getUser(threadContext).equals(context.getUser())) {
-            threadContext.putHeader(proxyUserHeader, context.getUser());
+            threadContext.putTransient(proxyUserHeader, context.getUser());
         }
     }
 }

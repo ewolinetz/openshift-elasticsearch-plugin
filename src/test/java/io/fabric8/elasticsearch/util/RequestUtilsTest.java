@@ -17,12 +17,9 @@
 package io.fabric8.elasticsearch.util;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.rest.RestRequest;
+import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -42,10 +39,10 @@ public class RequestUtilsTest {
 
     @Test
     public void testGetUserFromHeader() {
-        RestRequest request = mock(RestRequest.class);
-        when(request.header(eq(PROXY_HEADER))).thenReturn(USER);
+        ThreadContext context = new ThreadContext(Settings.EMPTY);
+        context.putHeader(PROXY_HEADER, USER);
         
-        assertEquals(USER, util.getUser(request));
+        assertEquals(USER, util.getUser(context));
     }
     
 }

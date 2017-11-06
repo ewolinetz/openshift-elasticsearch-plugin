@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.action.support.ActionFilter;
@@ -35,7 +34,6 @@ import org.elasticsearch.cluster.node.DiscoveryNodes;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.component.LifecycleComponent;
 import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.network.NetworkService;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.IndexScopedSettings;
@@ -73,7 +71,6 @@ import io.fabric8.elasticsearch.util.RequestUtils;
 
 public class OpenShiftElasticSearchPlugin extends Plugin implements ConfigurationSettings, ActionPlugin, NetworkPlugin {
 
-    private static final Logger LOG = Loggers.getLogger(OpenShiftElasticSearchPlugin.class);
     private final Settings settings;
     private KibanaUserReindexFilter kibanaReindexFilter;
     private KibanaUserReindexAction kibanaReindexAction;
@@ -118,6 +115,7 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
         list.add(seed);
         list.add(aclFilter);
         list.add(kibanaReindexFilter);
+        list.add(kibanaReindexAction);
         list.add(osElasticSearvice);
         list.add(new FieldStatsResponseFilter(pluginClient));
         list.addAll(sgPlugin.createComponents(client, clusterService, threadPool, resourceWatcherService, scriptService,

@@ -152,11 +152,5 @@ public class FieldStatsResponseFilterTest {
         //then the original listener should be notified
         verify(listener).onResponse(response);
     }
-    
-    @Test
-    public void testApplyActionResponsePassesDownTheChain() {
-        filter.apply(action, response, listener, chain );
-        verify(chain, times(1)).proceed(action, response, listener);
-    }
 
 }
