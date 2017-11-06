@@ -16,14 +16,12 @@
 
 package io.fabric8.elasticsearch.util;
 
-import org.apache.commons.lang.ObjectUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.http.netty.NettyHttpRequest;
-import org.elasticsearch.rest.RestRequest;
-import org.jboss.netty.handler.codec.http.HttpRequest;
+import org.elasticsearch.common.util.concurrent.ThreadContext;
 
 import io.fabric8.elasticsearch.plugin.ConfigurationSettings;
 import io.fabric8.elasticsearch.plugin.OpenshiftRequestContextFactory.OpenshiftRequestContext;
@@ -44,21 +42,21 @@ public class RequestUtils implements ConfigurationSettings  {
         this.proxyUserHeader = settings.get(SEARCHGUARD_AUTHENTICATION_PROXY_HEADER, DEFAULT_AUTH_PROXY_HEADER);
     }
     
-    public String getUser(RestRequest request) {
-        return (String) ObjectUtils.defaultIfNull(request.header(proxyUserHeader), "");
+    public String getUser(ThreadContext threadContext) {
+        return StringUtils.defaultIfEmpty(threadContext.getHeader(proxyUserHeader), "");
     }
     
-    public String getBearerToken(RestRequest request) {
-        final String[] auth = ((String) ObjectUtils.defaultIfNull(request.header(AUTHORIZATION_HEADER), "")).split(" ");
+    public String getBearerToken(ThreadContext threadContext) {
+        final String[] auth = StringUtils.defaultIfEmpty(threadContext.getHeader(AUTHORIZATION_HEADER), "").split(" ");
         if (auth.length >= 2 && "Bearer".equals(auth[0])) {
             return auth[1];
         }
         return "";
     }
     
-    public boolean isOperationsUser(RestRequest request) {
-        final String user = getUser(request);
-        final String token = getBearerToken(request);
+    public boolean isOperationsUser(ThreadContext threadContext) {
+        final String user = getUser(threadContext);
+        final String token = getBearerToken(threadContext);
         ConfigBuilder builder = new ConfigBuilder().withOauthToken(token);
         boolean allowed = false;
         try (NamespacedOpenShiftClient osClient = new DefaultOpenShiftClient(builder.build())) {
@@ -74,24 +72,19 @@ public class RequestUtils implements ConfigurationSettings  {
         return allowed;
     }
 
-    public void setUser(RestRequest request, String user) {
+    public void setUser(ThreadContext threadContext, String user) {
         LOGGER.debug("Modifying header '{}' to be '{}'", proxyUserHeader, user);
-        request.putHeader(proxyUserHeader, user);
+        threadContext.putHeader(proxyUserHeader, user);
     }
     
     /**
      * Modify the request of needed
      * @param request the original request
      * @param context the Openshift context 
-     * @return  a modified request
      */
-    public RestRequest modifyRequest(RestRequest request, OpenshiftRequestContext context) {
-        if(!getUser(request).equals(context.getUser()) && request instanceof NettyHttpRequest) {
-            NettyHttpRequest netty = (NettyHttpRequest)request;
-            HttpRequest httpRequest = netty.request();
-            httpRequest.headers().set(proxyUserHeader, context.getUser());
-            return new NettyHttpRequest(httpRequest, netty.getChannel());
+    public void modifyRequest(ThreadContext threadContext, OpenshiftRequestContext context) {
+        if(!getUser(threadContext).equals(context.getUser())) {
+            threadContext.putHeader(proxyUserHeader, context.getUser());
         }
-        return request;
     }
 }

@@ -16,10 +16,12 @@
 
 package io.fabric8.elasticsearch.plugin.acl;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map.Entry;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.UnaryOperator;
 
-import org.apache.commons.lang.ObjectUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
@@ -34,6 +36,7 @@ import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.client.node.NodeClient;
 import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.rest.BytesRestResponse;
@@ -113,12 +116,14 @@ public class DynamicACLFilter implements ConfigurationSettings {
         boolean continueProcessing = true;
         try {
             if (enabled) {
+                final ThreadContext threadContext = threadPool.getThreadContext();
+                logRequest(request, cache, threadContext);
                 // grab the kibana version here out of "kbn-version" if we can
                 // -- otherwise use the config one
-                String kbnVersion = getKibanaVersion(request);
-                final OpenshiftRequestContext requestContext = contextFactory.create(request, cache);
-                request = utils.modifyRequest(request, requestContext);
-                threadPool.getThreadContext().putTransient(OPENSHIFT_REQUEST_CONTEXT, requestContext);
+                String kbnVersion = getKibanaVersion(threadContext);
+                final OpenshiftRequestContext requestContext = contextFactory.create(threadContext, cache);
+                threadContext.putTransient(OPENSHIFT_REQUEST_CONTEXT, requestContext);
+                utils.modifyRequest(threadContext, requestContext);
                 if (requestContext.isAuthenticated()
                         && !cache.hasUser(requestContext.getUser(), requestContext.getToken())) {
                     if (updateCache(requestContext, kbnVersion)) {
@@ -138,8 +143,36 @@ public class DynamicACLFilter implements ConfigurationSettings {
         return continueProcessing;
     }
 
-    private String getKibanaVersion(RestRequest request) {
-        String kbnVersion = (String) ObjectUtils.defaultIfNull(request.header(kbnVersionHeader), "");
+    private void logRequest(final RestRequest request, final UserProjectCache cache,
+            final ThreadContext threadContext) {
+        if (LOGGER.isDebugEnabled()) {
+            try {
+                LOGGER.debug("Handling Request... {}", request.uri());
+                String user = utils.getUser(threadContext);
+                String token = utils.getBearerToken(threadContext);
+                LOGGER.debug("Evaluating request for user '{}' with a {} token", user,
+                        (StringUtils.isNotEmpty(token) ? "non-empty" : "empty"));
+                LOGGER.debug("Cache has user: {}", cache.hasUser(user, token));
+                if (LOGGER.isTraceEnabled()) {
+                    List<String> headers = new ArrayList<>();
+                    for (Entry<String, List<String>> entry : request.getHeaders().entrySet()) {
+                        if (RequestUtils.AUTHORIZATION_HEADER.equals(entry.getKey())) {
+                            headers.add(entry.getKey() + "=Bearer <REDACTED>");
+                        } else {
+                            headers.add(entry.getKey() + "=" + entry.getValue());
+                        }
+                    }
+                    LOGGER.trace("Request headers: {}", headers);
+                }
+
+            } catch (Exception e) {
+                LOGGER.debug("unable to log request: " + e.getMessage());
+            }
+        }
+    }
+
+    private String getKibanaVersion(final ThreadContext threadContext) {
+        String kbnVersion = StringUtils.defaultIfEmpty(threadContext.getHeader(kbnVersionHeader), "");
         if (StringUtils.isEmpty(kbnVersion)) {
             return kibanaVersion;
         }

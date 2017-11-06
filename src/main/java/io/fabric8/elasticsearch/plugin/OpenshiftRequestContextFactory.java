@@ -21,10 +21,8 @@ import static io.fabric8.elasticsearch.plugin.KibanaIndexMode.SHARED_OPS;
 import static io.fabric8.elasticsearch.plugin.KibanaIndexMode.UNIQUE;
 import static io.fabric8.elasticsearch.plugin.KibanaUserReindexFilter.getUsernameHash;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.Set;
 
 import org.apache.commons.lang.ArrayUtils;
@@ -33,7 +31,7 @@ import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.rest.RestRequest;
+import org.elasticsearch.common.util.concurrent.ThreadContext;
 
 import io.fabric8.elasticsearch.plugin.acl.UserProjectCache;
 import io.fabric8.elasticsearch.util.RequestUtils;
@@ -79,20 +77,18 @@ public class OpenshiftRequestContextFactory {
      * @throws All
      *             exceptions
      */
-    public OpenshiftRequestContext create(final RestRequest request, final UserProjectCache cache) throws Exception {
-        logRequest(request, cache);
-
+    public OpenshiftRequestContext create(final ThreadContext threadContext, final UserProjectCache cache) throws Exception {
         Set<String> projects = new HashSet<>();
         boolean isClusterAdmin = false;
-        String user = utils.getUser(request);
+        String user = utils.getUser(threadContext);
         if (user.contains("\\")) {
             user = user.replace("\\", "/");
-            utils.setUser(request, user);
+            utils.setUser(threadContext, user);
         }
 
-        String token = utils.getBearerToken(request);
+        String token = utils.getBearerToken(threadContext);
         if (StringUtils.isNotBlank(user) && StringUtils.isNotBlank(token)) {
-            isClusterAdmin = utils.isOperationsUser(request);
+            isClusterAdmin = utils.isOperationsUser(threadContext);
 
             if (!cache.hasUser(user, token)) {
                 projects = listProjectsFor(user, token);
@@ -100,30 +96,6 @@ public class OpenshiftRequestContextFactory {
         }
         return new OpenshiftRequestContext(user, token, isClusterAdmin, projects, getKibanaIndex(user, isClusterAdmin),
                 this.kibanaIndexMode);
-    }
-
-    private void logRequest(final RestRequest request, final UserProjectCache cache) {
-        if (LOGGER.isDebugEnabled()) {
-            String user = utils.getUser(request);
-            String token = utils.getBearerToken(request);
-            LOGGER.debug("Handling Request... {}", request.uri());
-            if (LOGGER.isTraceEnabled()) {
-                List<String> headers = new ArrayList<>();
-                for (Entry<String, List<String>> entry : request.getHeaders().entrySet()) {
-                    if (RequestUtils.AUTHORIZATION_HEADER.equals(entry.getKey())) {
-                        headers.add(entry.getKey() + "=Bearer <REDACTED>");
-                    } else {
-                        headers.add(entry.getKey() + "=" + entry.getValue());
-                    }
-                }
-                LOGGER.trace("Request headers: {}", headers);
-                // @TODO FIX CONTEXT
-                // LOGGER.trace("Request context: {}", request.getContext());
-            }
-            LOGGER.debug("Evaluating request for user '{}' with a {} token", user,
-                    (StringUtils.isNotEmpty(token) ? "non-empty" : "empty"));
-            LOGGER.debug("Cache has user: {}", cache.hasUser(user, token));
-        }
     }
 
     // WARNING: This function must perform authentication with the given token.

@@ -17,26 +17,31 @@
 package io.fabric8.elasticsearch.plugin;
 
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
 import org.apache.logging.log4j.Logger;
-import org.elasticsearch.action.ActionRequestBuilder;
 import org.elasticsearch.action.admin.indices.alias.IndicesAliasesRequestBuilder;
 import org.elasticsearch.action.admin.indices.alias.IndicesAliasesResponse;
 import org.elasticsearch.action.admin.indices.alias.get.GetAliasesRequestBuilder;
 import org.elasticsearch.action.admin.indices.alias.get.GetAliasesResponse;
 import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsRequestBuilder;
 import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsResponse;
+import org.elasticsearch.action.admin.indices.get.GetIndexResponse;
+import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.get.GetRequestBuilder;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.index.IndexResponse;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.update.UpdateResponse;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.common.util.concurrent.ThreadContext;
+import org.elasticsearch.common.xcontent.XContentType;
 
 import com.floragunn.searchguard.support.ConfigConstants;
-import com.google.common.collect.UnmodifiableIterator;
 
 /**
  * Facade to the ES client to simplify calls
@@ -46,15 +51,62 @@ public class PluginClient {
 
     private static Logger LOGGER = Loggers.getLogger(PluginClient.class);
     private final Client client;
+    private final ThreadContext threadContext;
 
-    public PluginClient(Client client) {
+    public PluginClient(Client client, ThreadContext threadContext) {
         this.client = client;
+        this.threadContext = threadContext;
+    }
+
+    public void deleteDocument(String index, String type, String id) {
+        LOGGER.debug("Deleted document: '{}/{}/{}'", index, type, id);
+        addCommonHeaders();
+        DeleteResponse response = client.prepareDelete(index, type, id).get();
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Document deleted: '{}'", response.status());
+        }
+    }
+    
+    public void updateDocument(String index, String type, String id, String source) {
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Updating Document: '{}/{}/{}' source: '{}'", index, type, id, source);
+        }
+        addCommonHeaders();
+        UpdateResponse response = client.prepareUpdate(index, type, id)
+                .setDoc(source, XContentType.JSON)
+                .setDocAsUpsert(true)
+                .get();
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Document Updated: '{}'", response.status());
+        }
+    }
+    
+    public SearchResponse search(String index, String type) {
+        return search(new String []{index}, new String [] {type}); 
+    }
+    
+    public SearchResponse search(String [] indicies, String [] types) {
+        addCommonHeaders();
+        return client.prepareSearch(indicies).setTypes(types).get();
+    }
+    
+    public GetIndexResponse getIndex(String... indicies) {
+        addCommonHeaders();
+        return client.admin().indices().prepareGetIndex().addIndices(indicies).get();
+    }
+    
+    public GetResponse getDocument(String index, String type, String id) {
+        addCommonHeaders();
+        return client
+                .prepareGet(index, type, id)
+                .get();
     }
     
     public IndexResponse createDocument(String index, String type, String id, String source) {
         LOGGER.trace("create document: '{}/{}/{}' source: '{}'", index, type, id, source);
-        IndexRequestBuilder builder = client.prepareIndex(index, type, id).setSource(source);
-        addCommonHeaders(builder);
+        IndexRequestBuilder builder = client.prepareIndex(index, type, id).setSource(source, XContentType.JSON);
+        addCommonHeaders();
         IndexResponse response = builder.get();
         return response;
     }
@@ -62,7 +114,7 @@ public class PluginClient {
     public boolean indexExists(final String index) {
         LOGGER.trace("Checking for existance of index '{}'", index);
         IndicesExistsRequestBuilder builder = client.admin().indices().prepareExists(index);
-        addCommonHeaders(builder);
+        addCommonHeaders();
         IndicesExistsResponse response = builder.get();
         boolean exists = response.isExists();
         LOGGER.trace("Index '{}' exists? {}", index, exists);
@@ -74,9 +126,8 @@ public class PluginClient {
         GetRequestBuilder builder = client.prepareGet()
             .setIndex(index)
             .setType(type)
-            .setId(id)
-            .setFields(new String[] {});
-        addCommonHeaders(builder);
+            .setId(id);
+        addCommonHeaders();
         GetResponse response = builder.get();
         final boolean exists = response.isExists();
         LOGGER.trace("Document '{}/{}/{}' exists? {}", index, type, id, exists);
@@ -92,9 +143,9 @@ public class PluginClient {
     public Set<String> getIndicesForAlias(String alias){
         LOGGER.trace("Retrieving indices for alias '{}'", alias);
         GetAliasesRequestBuilder builder = this.client.admin().indices().prepareGetAliases(alias);
-        addCommonHeaders(builder);
+        addCommonHeaders();
         GetAliasesResponse response = builder.get();
-        UnmodifiableIterator<String> keysIt = response.getAliases().keysIt();
+        Iterator<String> keysIt = response.getAliases().keysIt();
         Set<String> indices = new HashSet<>();
         while (keysIt.hasNext()) {
             indices.add(keysIt.next());
@@ -117,7 +168,7 @@ public class PluginClient {
             return acknowledged;
         }
         IndicesAliasesRequestBuilder builder = this.client.admin().indices().prepareAliases();
-        addCommonHeaders(builder);
+        addCommonHeaders();
         for (Map.Entry<String, String> entry : aliases.entrySet()) {
             LOGGER.debug("Creating alias for {} as {}", entry.getKey(), entry.getValue());
             builder.addAlias(entry.getKey(), entry.getValue());
@@ -128,8 +179,7 @@ public class PluginClient {
         return acknowledged;
     }
 
-    @SuppressWarnings("rawtypes")
-    private void addCommonHeaders(ActionRequestBuilder builder) {
-        builder.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true");
+    private void addCommonHeaders() {
+        threadContext.putTransient(ConfigConstants.SG_CHANNEL_TYPE, "direct");
     }
 }

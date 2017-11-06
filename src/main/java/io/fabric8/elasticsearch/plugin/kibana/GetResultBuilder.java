@@ -71,7 +71,7 @@ public class GetResultBuilder {
         // Check for .kibana.* in the source
         BytesReference replacedContent = null;
         if (response != null && !response.isSourceEmpty() && replacedIndex != null && index != null) {
-            String source = response.getSourceAsBytesRef().toUtf8();
+            String source = response.getSourceAsBytesRef().utf8ToString();
             String replaced = source.replaceAll(replacedIndex, index);
             replacedContent = new BytesArray(replaced);
         }

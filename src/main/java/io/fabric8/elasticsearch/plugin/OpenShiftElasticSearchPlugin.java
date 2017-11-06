@@ -76,6 +76,7 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     private static final Logger LOG = Loggers.getLogger(OpenShiftElasticSearchPlugin.class);
     private final Settings settings;
     private KibanaUserReindexFilter kibanaReindexFilter;
+    private KibanaUserReindexAction kibanaReindexAction;
     private DynamicACLFilter aclFilter;
     private SearchGuardPlugin sgPlugin;
 
@@ -90,18 +91,19 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
         final UserProjectCache cache = new UserProjectCacheMapAdapter();
         final PluginSettings pluginSettings = new PluginSettings(settings);
         final IndexMappingLoader indexMappingLoader = new IndexMappingLoader(settings);
-        final PluginClient pluginClient = new PluginClient(client);
+        final PluginClient pluginClient = new PluginClient(client, threadPool.getThreadContext());
         final RequestUtils requestUtils = new RequestUtils(settings);
         final OpenshiftClientFactory clientFactory = new OpenshiftClientFactory();
         final OpenshiftRequestContextFactory contextFactory = new OpenshiftRequestContextFactory(settings, requestUtils,
                 clientFactory);
         final SearchGuardSyncStrategyFactory documentFactory = new SearchGuardSyncStrategyFactory(pluginSettings);
-        final KibanaSeed seed = new KibanaSeed(pluginSettings, indexMappingLoader, pluginClient);
+        final KibanaSeed seed = new KibanaSeed(pluginSettings, indexMappingLoader, pluginClient, threadPool);
         sgPlugin = new SearchGuardPlugin(settings);
 
         this.aclFilter = new DynamicACLFilter(cache, pluginSettings, seed, client, contextFactory, documentFactory,
                 threadPool, requestUtils);
-        this.kibanaReindexFilter = new KibanaUserReindexFilter(pluginSettings);
+        this.kibanaReindexFilter = new KibanaUserReindexFilter(pluginSettings, threadPool);
+        this.kibanaReindexAction = new KibanaUserReindexAction(pluginSettings, client);
         OpenShiftElasticSearchService osElasticSearvice = new OpenShiftElasticSearchService(settings, client, cache);
 
         List<Object> list = new ArrayList<>();
@@ -135,7 +137,6 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
         List<RestHandler> list = new ArrayList<>();
         list.addAll(sgPlugin.getRestHandlers(settings, restController, clusterSettings, indexScopedSettings,
                 settingsFilter, indexNameExpressionResolver, nodesInCluster));
-        list.add(kibanaReindexFilter);
         return list;
     }
 
@@ -154,6 +155,7 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     @Override
     public List<Class<? extends ActionFilter>> getActionFilters() {
         List<Class<? extends ActionFilter>> list = Arrays.asList(FieldStatsResponseFilter.class,
+                KibanaUserReindexFilter.class,
                 KibanaUserReindexAction.class);
         list.addAll(sgPlugin.getActionFilters());
         return list;
