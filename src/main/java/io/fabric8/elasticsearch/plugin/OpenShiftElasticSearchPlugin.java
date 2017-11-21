@@ -59,6 +59,7 @@ import org.elasticsearch.transport.TransportInterceptor;
 import org.elasticsearch.watcher.ResourceWatcherService;
 
 import com.floragunn.searchguard.SearchGuardPlugin;
+import com.floragunn.searchguard.ssl.SearchGuardSSLPlugin;
 
 import io.fabric8.elasticsearch.plugin.acl.DynamicACLFilter;
 import io.fabric8.elasticsearch.plugin.acl.SearchGuardSyncStrategyFactory;
@@ -76,9 +77,12 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     private KibanaUserReindexAction kibanaReindexAction;
     private DynamicACLFilter aclFilter;
     private SearchGuardPlugin sgPlugin;
+    private SearchGuardSSLPlugin sgSSL;
 
     public OpenShiftElasticSearchPlugin(final Settings settings) {
         this.settings = settings;
+        this.sgPlugin = new SearchGuardPlugin(settings);
+        this.sgSSL = new SearchGuardSSLPlugin(this.settings);
     }
 
     public Collection<Object> createComponents(Client client, ClusterService clusterService, ThreadPool threadPool,
@@ -95,7 +99,6 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
                 clientFactory);
         final SearchGuardSyncStrategyFactory documentFactory = new SearchGuardSyncStrategyFactory(pluginSettings);
         final KibanaSeed seed = new KibanaSeed(pluginSettings, indexMappingLoader, pluginClient, threadPool);
-        sgPlugin = new SearchGuardPlugin(settings);
 
         this.aclFilter = new DynamicACLFilter(cache, pluginSettings, seed, client, contextFactory, documentFactory,
                 threadPool, requestUtils);
@@ -120,6 +123,8 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
         list.add(new FieldStatsResponseFilter(pluginClient));
         list.addAll(sgPlugin.createComponents(client, clusterService, threadPool, resourceWatcherService, scriptService,
                 namedXContentRegistry));
+        list.addAll(sgSSL.createComponents(client, clusterService, threadPool, resourceWatcherService, scriptService,
+                namedXContentRegistry));
         return list;
     }
 
@@ -135,6 +140,8 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
         List<RestHandler> list = new ArrayList<>();
         list.addAll(sgPlugin.getRestHandlers(settings, restController, clusterSettings, indexScopedSettings,
                 settingsFilter, indexNameExpressionResolver, nodesInCluster));
+        list.addAll(sgSSL.getRestHandlers(settings, restController, clusterSettings, indexScopedSettings,
+                settingsFilter, indexNameExpressionResolver, nodesInCluster));
         return list;
     }
 
@@ -142,12 +149,14 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
         List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> list = new ArrayList<>();
         list.addAll(sgPlugin.getActions());
+        list.addAll(sgSSL.getActions());
         return list;
     }
 
     @Override
     public void onIndexModule(IndexModule indexModule) {
         sgPlugin.onIndexModule(indexModule);
+        sgSSL.onIndexModule(indexModule);
     }
 
     @Override
@@ -156,20 +165,26 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
                 KibanaUserReindexFilter.class,
                 KibanaUserReindexAction.class);
         list.addAll(sgPlugin.getActionFilters());
+        list.addAll(sgSSL.getActionFilters());
         return list;
     }
 
     @Override
     public List<TransportInterceptor> getTransportInterceptors(ThreadContext threadContext) {
-        return sgPlugin.getTransportInterceptors(threadContext);
+        List<TransportInterceptor> list = sgPlugin.getTransportInterceptors(threadContext);
+        list.addAll(sgSSL.getTransportInterceptors(threadContext));
+        return list;
     }
 
     @Override
     public Map<String, Supplier<Transport>> getTransports(Settings settings, ThreadPool threadPool, BigArrays bigArrays,
             CircuitBreakerService circuitBreakerService, NamedWriteableRegistry namedWriteableRegistry,
             NetworkService networkService) {
-        return sgPlugin.getTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry,
+        Map<String, Supplier<Transport>> transports = sgPlugin.getTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry,
                 networkService);
+        transports.putAll(sgSSL.getTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry,
+                networkService));
+        return transports;
     }
 
     @Override
@@ -177,34 +192,49 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
             BigArrays bigArrays, CircuitBreakerService circuitBreakerService,
             NamedWriteableRegistry namedWriteableRegistry, NamedXContentRegistry namedXContentRegistry,
             NetworkService networkService, Dispatcher dispatcher) {
-        return sgPlugin.getHttpTransports(settings, threadPool, bigArrays, circuitBreakerService,
+        Map<String, Supplier<HttpServerTransport>> transports = sgPlugin.getHttpTransports(settings, threadPool, bigArrays, circuitBreakerService,
                 namedWriteableRegistry, namedXContentRegistry, networkService, dispatcher);
+        transports.putAll(sgSSL.getHttpTransports(settings, threadPool, bigArrays, circuitBreakerService,
+                namedWriteableRegistry, namedXContentRegistry, networkService, dispatcher));
+        return transports;
     }
 
     @Override
     public Collection<Class<? extends LifecycleComponent>> getGuiceServiceClasses() {
-        return sgPlugin.getGuiceServiceClasses();
+        Collection<Class<? extends LifecycleComponent>> serviceClasses = sgPlugin.getGuiceServiceClasses();
+        serviceClasses.addAll(sgSSL.getGuiceServiceClasses());
+        return serviceClasses;
     }
 
     @Override
     public Settings additionalSettings() {
-        return sgPlugin.additionalSettings();
+        return Settings.builder()
+                .put(sgPlugin.additionalSettings())
+                .put(sgSSL.additionalSettings())
+                .build();
     }
 
     @Override
     public List<Setting<?>> getSettings() {
-        return sgPlugin.getSettings();
+        List<Setting<?>> settings = sgPlugin.getSettings();
+        settings.addAll(sgSSL.getSettings());
+        return settings;
     }
 
     @Override
     public List<String> getSettingsFilter() {
-        return sgPlugin.getSettingsFilter();
+        List<String> filter = sgPlugin.getSettingsFilter();
+        filter.addAll(sgSSL.getSettingsFilter());
+        return filter;
     }
 
     @Override
     public void close() throws IOException {
         if (sgPlugin != null) {
             sgPlugin.close();
+        }
+        if (sgSSL != null) {
+            sgSSL.close();
         }
         super.close();
     }
