@@ -40,9 +40,6 @@ import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.rest.RestStatus;
 
-import com.squareup.okhttp.Request;
-import com.squareup.okhttp.Response;
-
 import io.fabric8.elasticsearch.plugin.ConfigurationSettings;
 import io.fabric8.elasticsearch.plugin.OpenshiftClientFactory;
 import io.fabric8.elasticsearch.plugin.OpenshiftRequestContextFactory.OpenshiftRequestContext;
@@ -52,10 +49,11 @@ import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.openshift.api.model.SubjectAccessReviewResponse;
 import io.fabric8.openshift.client.DefaultOpenShiftClient;
 import io.fabric8.openshift.client.NamespacedOpenShiftClient;
-import io.netty.channel.Channel;
+import okhttp3.Request;
+import okhttp3.Response;
 
 public class RequestUtils implements ConfigurationSettings  {
-    
+
     private static final Logger LOGGER = Loggers.getLogger(RequestUtils.class);
     public static final String AUTHORIZATION_HEADER = "Authorization";
 
@@ -69,11 +67,11 @@ public class RequestUtils implements ConfigurationSettings  {
         this.proxyUserHeader = pluginSettings.getSettings().get(SEARCHGUARD_AUTHENTICATION_PROXY_HEADER, DEFAULT_AUTH_PROXY_HEADER);
         this.k8ClientFactory = clientFactory;
     }
-    
+
     public String getUser(RestRequest request) {
         return StringUtils.defaultIfEmpty(request.header(proxyUserHeader), "");
     }
-    
+
     public String getBearerToken(RestRequest request) {
         final String[] auth = StringUtils.defaultIfEmpty(request.header(AUTHORIZATION_HEADER), "").split(" ");
         if (auth.length >= 2 && "Bearer".equals(auth[0])) {
@@ -81,7 +79,7 @@ public class RequestUtils implements ConfigurationSettings  {
         }
         return "";
     }
-    
+
     public boolean isClientCertAuth(final ThreadContext threadContext) {
         return threadContext != null && StringUtils.isNotEmpty(threadContext.getTransient("_sg_ssl_transport_principal"));
     }
@@ -107,10 +105,10 @@ public class RequestUtils implements ConfigurationSettings  {
                 }
                 return allowed;
             }
-            
+
         });
     }
-    
+
     private <T> T executePrivilegedAction(PrivilegedAction<T> action){
         final SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -118,7 +116,7 @@ public class RequestUtils implements ConfigurationSettings  {
         }
         return AccessController.doPrivileged(action);
     }
-        
+
 
     @SuppressWarnings("rawtypes")
     public String assertUser(RestRequest request){
@@ -164,17 +162,17 @@ public class RequestUtils implements ConfigurationSettings  {
                 }
                 return username;
             }
-            
+
         });
     }
 
     /**
      * Modify the request of needed
      * @param request the original request
-     * @param context the Openshift context 
+     * @param context the Openshift context
      */
     public RestRequest modifyRequest(final RestRequest request, OpenshiftRequestContext context, RestChannel channel) {
-        
+
         final String uri = getUri(request, context);
         final BytesReference content = getContent(request, context);
         if(!getUser(request).equals(context.getUser()) || !uri.equals(request.uri()) || content != request.content()) {
@@ -203,7 +201,7 @@ public class RequestUtils implements ConfigurationSettings  {
                 public BytesReference content() {
                     return content;
                 }
-                
+
                 @Override
                 public SocketAddress getRemoteAddress() {
                     return request.getRemoteAddress();
@@ -224,7 +222,7 @@ public class RequestUtils implements ConfigurationSettings  {
                 public Channel getChannel() {
                     return (Channel) channel;
                 }
-                
+
             };
             modified.params().putAll(request.params());
             //HACK - only need to do if we modify the kibana index
@@ -235,7 +233,7 @@ public class RequestUtils implements ConfigurationSettings  {
         }
         return request;
     }
-    
+
     private BytesReference getContent(final RestRequest request, final OpenshiftRequestContext context) {
         String content = request.content().utf8ToString();
         if(content.contains("_index\":\"" + defaultKibanaIndex)) {
@@ -245,7 +243,7 @@ public class RequestUtils implements ConfigurationSettings  {
         }
         return request.content();
     }
-    
+
     private String getUri(final RestRequest request, final OpenshiftRequestContext context) {
         if(request.uri().contains(defaultKibanaIndex) && !context.getKibanaIndex().equals(defaultKibanaIndex)) {
             String uri = request.uri().replaceAll(defaultKibanaIndex, context.getKibanaIndex());

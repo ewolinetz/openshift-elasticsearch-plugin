@@ -76,7 +76,7 @@ public class OpenshiftRequestContextFactory {
 
     /**
      * Create a user context from the given request
-     * 
+     *
      * @param cache
      *            - The cache of user projects to create ACLs
      * @return an OpenshiftRequestContext
@@ -101,7 +101,7 @@ public class OpenshiftRequestContextFactory {
         LOGGER.debug("Returing EMPTY request context; either was provided client cert or empty token.");
         return OpenshiftRequestContext.EMPTY;
     }
-    
+
     private void logRequest(final RestRequest request, final UserProjectCache cache) {
         if (LOGGER.isDebugEnabled()) {
             String user = utils.getUser(request);
@@ -155,7 +155,7 @@ public class OpenshiftRequestContextFactory {
                 }
                 return names;
             }
-            
+
         });
     }
 
@@ -181,7 +181,7 @@ public class OpenshiftRequestContextFactory {
         return kibanaPrefix + "." + getUsernameHash(username);
 
     }
-    
+
     public static String getUsernameHash(String username) {
         return DigestUtils.sha1Hex(username);
     }
@@ -210,7 +210,7 @@ public class OpenshiftRequestContextFactory {
 
         /**
          * Method to determine if context has a none empty username and token
-         * 
+         *
          * @return true if there is a non-empty user and token
          */
         public boolean isAuthenticated() {
@@ -231,7 +231,7 @@ public class OpenshiftRequestContextFactory {
 
         /**
          * The Set of projects with UUID
-         * 
+         *
          * @return the set of project names formatted with their UUID (e.g.
          *         project.UUID)
          */
