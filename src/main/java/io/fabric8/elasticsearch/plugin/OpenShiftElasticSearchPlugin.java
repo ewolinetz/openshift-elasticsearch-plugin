@@ -18,7 +18,6 @@ package io.fabric8.elasticsearch.plugin;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +36,7 @@ import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
 import org.elasticsearch.common.network.NetworkService;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.IndexScopedSettings;
+import org.elasticsearch.common.settings.Setting.Property;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.SettingsFilter;
@@ -59,7 +59,6 @@ import org.elasticsearch.transport.TransportInterceptor;
 import org.elasticsearch.watcher.ResourceWatcherService;
 
 import com.floragunn.searchguard.SearchGuardPlugin;
-import com.floragunn.searchguard.ssl.SearchGuardSSLPlugin;
 
 import io.fabric8.elasticsearch.plugin.acl.DynamicACLFilter;
 import io.fabric8.elasticsearch.plugin.acl.SearchGuardSyncStrategyFactory;
@@ -77,12 +76,10 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     private KibanaUserReindexAction kibanaReindexAction;
     private DynamicACLFilter aclFilter;
     private SearchGuardPlugin sgPlugin;
-    private SearchGuardSSLPlugin sgSSL;
 
     public OpenShiftElasticSearchPlugin(final Settings settings) {
         this.settings = settings;
         this.sgPlugin = new SearchGuardPlugin(settings);
-        this.sgSSL = new SearchGuardSSLPlugin(this.settings);
     }
 
     public Collection<Object> createComponents(Client client, ClusterService clusterService, ThreadPool threadPool,
@@ -123,8 +120,6 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
         list.add(new FieldStatsResponseFilter(pluginClient));
         list.addAll(sgPlugin.createComponents(client, clusterService, threadPool, resourceWatcherService, scriptService,
                 namedXContentRegistry));
-        list.addAll(sgSSL.createComponents(client, clusterService, threadPool, resourceWatcherService, scriptService,
-                namedXContentRegistry));
         return list;
     }
 
@@ -140,8 +135,6 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
         List<RestHandler> list = new ArrayList<>();
         list.addAll(sgPlugin.getRestHandlers(settings, restController, clusterSettings, indexScopedSettings,
                 settingsFilter, indexNameExpressionResolver, nodesInCluster));
-        list.addAll(sgSSL.getRestHandlers(settings, restController, clusterSettings, indexScopedSettings,
-                settingsFilter, indexNameExpressionResolver, nodesInCluster));
         return list;
     }
 
@@ -149,30 +142,27 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
         List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> list = new ArrayList<>();
         list.addAll(sgPlugin.getActions());
-        list.addAll(sgSSL.getActions());
         return list;
     }
 
     @Override
     public void onIndexModule(IndexModule indexModule) {
         sgPlugin.onIndexModule(indexModule);
-        sgSSL.onIndexModule(indexModule);
     }
 
     @Override
     public List<Class<? extends ActionFilter>> getActionFilters() {
-        List<Class<? extends ActionFilter>> list = Arrays.asList(FieldStatsResponseFilter.class,
-                KibanaUserReindexFilter.class,
-                KibanaUserReindexAction.class);
+        List<Class<? extends ActionFilter>> list = new ArrayList<>();
+        list.add(FieldStatsResponseFilter.class);
+        list.add(KibanaUserReindexFilter.class);
+        list.add(KibanaUserReindexAction.class);
         list.addAll(sgPlugin.getActionFilters());
-        list.addAll(sgSSL.getActionFilters());
         return list;
     }
 
     @Override
     public List<TransportInterceptor> getTransportInterceptors(ThreadContext threadContext) {
         List<TransportInterceptor> list = sgPlugin.getTransportInterceptors(threadContext);
-        list.addAll(sgSSL.getTransportInterceptors(threadContext));
         return list;
     }
 
@@ -182,8 +172,6 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
             NetworkService networkService) {
         Map<String, Supplier<Transport>> transports = sgPlugin.getTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry,
                 networkService);
-        transports.putAll(sgSSL.getTransports(settings, threadPool, bigArrays, circuitBreakerService, namedWriteableRegistry,
-                networkService));
         return transports;
     }
 
@@ -194,15 +182,12 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
             NetworkService networkService, Dispatcher dispatcher) {
         Map<String, Supplier<HttpServerTransport>> transports = sgPlugin.getHttpTransports(settings, threadPool, bigArrays, circuitBreakerService,
                 namedWriteableRegistry, namedXContentRegistry, networkService, dispatcher);
-        transports.putAll(sgSSL.getHttpTransports(settings, threadPool, bigArrays, circuitBreakerService,
-                namedWriteableRegistry, namedXContentRegistry, networkService, dispatcher));
         return transports;
     }
 
     @Override
     public Collection<Class<? extends LifecycleComponent>> getGuiceServiceClasses() {
         Collection<Class<? extends LifecycleComponent>> serviceClasses = sgPlugin.getGuiceServiceClasses();
-        serviceClasses.addAll(sgSSL.getGuiceServiceClasses());
         return serviceClasses;
     }
 
@@ -210,21 +195,31 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     public Settings additionalSettings() {
         return Settings.builder()
                 .put(sgPlugin.additionalSettings())
-                .put(sgSSL.additionalSettings())
                 .build();
     }
 
     @Override
     public List<Setting<?>> getSettings() {
         List<Setting<?>> settings = sgPlugin.getSettings();
-        settings.addAll(sgSSL.getSettings());
+        settings.add(Setting.simpleString(OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_APP, Property.NodeScope));
+        settings.add(Setting.simpleString(OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_OPERATIONS, Property.NodeScope));
+        settings.add(Setting.simpleString(OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_EMPTY, Property.NodeScope));
+        settings.add(Setting.boolSetting("openshift.config.use_common_data_model", true, Property.NodeScope));
+        settings.add(Setting.simpleString(OPENSHIFT_CONFIG_PROJECT_INDEX_PREFIX, Property.NodeScope));
+        settings.add(Setting.simpleString("openshift.config.time_field_name", Property.NodeScope));
+        settings.add(Setting.simpleString("openshift.searchguard.keystore.path", Property.NodeScope));
+        settings.add(Setting.simpleString("openshift.searchguard.truststore.path", Property.NodeScope));
+        settings.add(Setting.boolSetting("openshift.operations.allow_cluster_reader", false, Property.NodeScope));
+        settings.add(Setting.simpleString("openshift.kibana.index.mode", Property.NodeScope));
+        settings.add(Setting.simpleString(OPENSHIFT_ACL_ROLE_STRATEGY, Property.NodeScope));
         return settings;
     }
 
     @Override
     public List<String> getSettingsFilter() {
         List<String> filter = sgPlugin.getSettingsFilter();
-        filter.addAll(sgSSL.getSettingsFilter());
+        filter.add("openshift.*");
+        filter.add("io.fabric8.elasticsearch.*");
         return filter;
     }
 
@@ -232,9 +227,6 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     public void close() throws IOException {
         if (sgPlugin != null) {
             sgPlugin.close();
-        }
-        if (sgSSL != null) {
-            sgSSL.close();
         }
         super.close();
     }

@@ -19,9 +19,14 @@ package io.fabric8.elasticsearch.plugin.kibana;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.Logger;
+import org.elasticsearch.SpecialPermission;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 
@@ -35,11 +40,27 @@ public class IndexMappingLoader implements ConfigurationSettings {
     private final String emptyProjectMappingsTemplate;
 
     public IndexMappingLoader(final Settings settings) {
-        appMappingsTemplate = loadMapping(settings, OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_APP);
-        opsMappingsTemplate = loadMapping(settings, OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_OPERATIONS);
-        emptyProjectMappingsTemplate = loadMapping(settings, OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_EMPTY);
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(new SpecialPermission());
+        }
+        Map<String, String> result = AccessController.doPrivileged(new PrivilegedAction<Map<String, String>>() {
+            
+            @Override
+            public Map<String, String> run() {
+                Map<String, String> mappings = new HashMap<>();
+                mappings.put("app", loadMapping(settings, OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_APP));
+                mappings.put("opp", loadMapping(settings, OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_OPERATIONS));
+                mappings.put("empty", loadMapping(settings, OPENSHIFT_ES_KIBANA_SEED_MAPPINGS_EMPTY));
+                return mappings;
+            }
+            
+        });
+        appMappingsTemplate = result.get("app");
+        opsMappingsTemplate = result.get("opp");
+        emptyProjectMappingsTemplate = result.get("empty");
     }
-    
+
     private String loadMapping(final Settings settings, final String key) {
         String mapping = settings.get(key);
         if (mapping != null && new File(mapping).exists()) {
@@ -51,7 +72,8 @@ public class IndexMappingLoader implements ConfigurationSettings {
                 logger.error("Unable to load the Kibana mapping specified by {}: {}", key, e, mapping);
             }
         }
-        throw new RuntimeException("Unable to load index mapping for " + key + ".  The key was not in the settings or it specified a file that does not exists.");
+        throw new RuntimeException("Unable to load index mapping for " + key
+                + ".  The key was not in the settings or it specified a file that does not exists.");
     }
 
     public String getApplicationMappingsTemplate() {
