@@ -153,9 +153,9 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
     @Override
     public List<Class<? extends ActionFilter>> getActionFilters() {
         List<Class<? extends ActionFilter>> list = new ArrayList<>();
-        list.add(FieldStatsResponseFilter.class);
-        list.add(KibanaUserReindexFilter.class);
-        list.add(KibanaUserReindexAction.class);
+//        list.add(FieldStatsResponseFilter.class);
+//        list.add(KibanaUserReindexFilter.class);
+//        list.add(KibanaUserReindexAction.class);
         list.addAll(sgPlugin.getActionFilters());
         return list;
     }

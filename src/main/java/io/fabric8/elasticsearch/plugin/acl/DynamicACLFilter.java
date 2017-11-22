@@ -106,7 +106,8 @@ public class DynamicACLFilter implements ConfigurationSettings {
             @Override
             public void handleRequest(RestRequest request, RestChannel channel, NodeClient client) throws Exception {
                 if (continueProcessing(request, channel, client)) {
-                    unaryOperator.apply(original);
+                    RestHandler handler = unaryOperator.apply(original);
+                    handler.handleRequest(request, channel, client);
                 }
             }
         };
