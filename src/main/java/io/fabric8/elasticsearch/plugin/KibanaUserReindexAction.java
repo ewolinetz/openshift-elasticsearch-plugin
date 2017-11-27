@@ -153,6 +153,7 @@ public class KibanaUserReindexAction implements ActionFilter, ConfigurationSetti
                         }
                     }
                 }
+                listener.onResponse(response);
             }
 
             @Override
