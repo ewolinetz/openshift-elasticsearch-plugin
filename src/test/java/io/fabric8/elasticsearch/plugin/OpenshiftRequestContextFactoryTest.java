@@ -26,8 +26,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.concurrent.ThreadContext;
+import org.elasticsearch.rest.RestRequest;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -37,6 +42,7 @@ import io.fabric8.elasticsearch.plugin.OpenshiftRequestContextFactory;
 import io.fabric8.elasticsearch.plugin.OpenshiftRequestContextFactory.OpenshiftRequestContext;
 import io.fabric8.elasticsearch.plugin.acl.UserProjectCache;
 import io.fabric8.elasticsearch.util.RequestUtils;
+import io.fabric8.elasticsearch.util.TestRestRequest;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.dsl.ClientNonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.ClientResource;
@@ -53,15 +59,16 @@ public class OpenshiftRequestContextFactoryTest {
     private OpenshiftRequestContextFactory factory;
     private OpenshiftRequestContext context;
     private OpenshiftClientFactory clientFactory = mock(OpenshiftClientFactory.class);
-    private ThreadContext threadContext;
+    private RestRequest request;
     private UserProjectCache cache = mock(UserProjectCache.class);
     private RequestUtils utils;
 
     @Before
     public void setUp() throws Exception {
-        threadContext = new ThreadContext(Settings.EMPTY);
-        threadContext.putHeader(ConfigurationSettings.DEFAULT_AUTH_PROXY_HEADER, "fooUser");
-        threadContext.putHeader("Authorization", "Bearer ABC123");
+        Map<String, List<String>> headers = new TreeMap<String, List<String>>(String.CASE_INSENSITIVE_ORDER);
+        headers.put(ConfigurationSettings.DEFAULT_AUTH_PROXY_HEADER, Arrays.asList("fooUser"));
+        headers.put("Authorization", Arrays.asList("Bearer ABC123"));
+        request = new TestRestRequest(headers);
         givenUserIsCashed(true);
     }
 
@@ -72,7 +79,7 @@ public class OpenshiftRequestContextFactoryTest {
     private void givenUserContextFactory(boolean isOperationsUser) {
         Settings settings = settingsBuilder.build();
         utils = spy(new RequestUtils(settings));
-        doReturn(isOperationsUser).when(utils).isOperationsUser(any(ThreadContext.class));
+        doReturn(isOperationsUser).when(utils).isOperationsUser(any(RestRequest.class), anyString());
 
         factory = new OpenshiftRequestContextFactory(settings, utils, clientFactory);
     }
@@ -94,7 +101,7 @@ public class OpenshiftRequestContextFactoryTest {
     }
 
     private OpenshiftRequestContext whenCreatingUserContext() throws Exception {
-        this.context = factory.create(threadContext, cache);
+        this.context = factory.create(request, cache);
         return this.context;
     }
 
@@ -121,9 +128,10 @@ public class OpenshiftRequestContextFactoryTest {
 
     @Test
     public void testCreatingUserContextWhenUserHasBackSlash() throws Exception {
-        threadContext = new ThreadContext(Settings.EMPTY);
-        threadContext.putHeader(ConfigurationSettings.DEFAULT_AUTH_PROXY_HEADER, "test\\user");
-
+        Map<String, List<String>> headers = new TreeMap<String, List<String>>(String.CASE_INSENSITIVE_ORDER);
+        headers.put(ConfigurationSettings.DEFAULT_AUTH_PROXY_HEADER, Arrays.asList("test\\user"));
+        headers.put("Authorization", Arrays.asList("Bearer ABC123"));
+        request = new TestRestRequest(headers);
         givenUserContextFactory(false);
         whenCreatingUserContext();
         assertEquals("test/user", context.getUser());

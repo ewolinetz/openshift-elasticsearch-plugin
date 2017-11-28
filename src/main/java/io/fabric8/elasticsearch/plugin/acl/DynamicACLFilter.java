@@ -118,13 +118,13 @@ public class DynamicACLFilter implements ConfigurationSettings {
         try {
             if (enabled) {
                 final ThreadContext threadContext = threadPool.getThreadContext();
-                logRequest(request, cache, threadContext);
+                logRequest(request, cache);
                 // grab the kibana version here out of "kbn-version" if we can
                 // -- otherwise use the config one
-                String kbnVersion = getKibanaVersion(threadContext);
-                final OpenshiftRequestContext requestContext = contextFactory.create(threadContext, cache);
+                String kbnVersion = getKibanaVersion(request);
+                final OpenshiftRequestContext requestContext = contextFactory.create(request, cache);
                 threadContext.putTransient(OPENSHIFT_REQUEST_CONTEXT, requestContext);
-                utils.modifyRequest(threadContext, requestContext);
+                request = utils.modifyRequest(request, requestContext);
                 if (requestContext.isAuthenticated()
                         && !cache.hasUser(requestContext.getUser(), requestContext.getToken())) {
                     if (updateCache(requestContext, kbnVersion)) {
@@ -144,13 +144,12 @@ public class DynamicACLFilter implements ConfigurationSettings {
         return continueProcessing;
     }
 
-    private void logRequest(final RestRequest request, final UserProjectCache cache,
-            final ThreadContext threadContext) {
+    private void logRequest(final RestRequest request, final UserProjectCache cache) {
         if (LOGGER.isDebugEnabled()) {
             try {
                 LOGGER.debug("Handling Request... {}", request.uri());
-                String user = utils.getUser(threadContext);
-                String token = utils.getBearerToken(threadContext);
+                String user = utils.getUser(request);
+                String token = utils.getBearerToken(request);
                 LOGGER.debug("Evaluating request for user '{}' with a {} token", user,
                         (StringUtils.isNotEmpty(token) ? "non-empty" : "empty"));
                 LOGGER.debug("Cache has user: {}", cache.hasUser(user, token));
@@ -172,8 +171,8 @@ public class DynamicACLFilter implements ConfigurationSettings {
         }
     }
 
-    private String getKibanaVersion(final ThreadContext threadContext) {
-        String kbnVersion = StringUtils.defaultIfEmpty(threadContext.getHeader(kbnVersionHeader), "");
+    private String getKibanaVersion(final RestRequest request) {
+        String kbnVersion = StringUtils.defaultIfEmpty(request.header(kbnVersionHeader), "");
         if (StringUtils.isEmpty(kbnVersion)) {
             return kibanaVersion;
         }

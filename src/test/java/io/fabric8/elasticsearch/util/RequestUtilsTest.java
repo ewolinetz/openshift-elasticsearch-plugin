@@ -18,8 +18,13 @@ package io.fabric8.elasticsearch.util;
 
 import static org.junit.Assert.assertEquals;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.concurrent.ThreadContext;
+import org.elasticsearch.rest.RestRequest;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -39,10 +44,11 @@ public class RequestUtilsTest {
 
     @Test
     public void testGetUserFromHeader() {
-        ThreadContext context = new ThreadContext(Settings.EMPTY);
-        context.putHeader(PROXY_HEADER, USER);
+        Map<String, List<String>> headers = new TreeMap<String, List<String>>(String.CASE_INSENSITIVE_ORDER);
+        headers.put(PROXY_HEADER, Arrays.asList(USER));
+        RestRequest request = new TestRestRequest(headers);
         
-        assertEquals(USER, util.getUser(context));
+        assertEquals(USER, util.getUser(request));
     }
     
 }

@@ -31,7 +31,7 @@ import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.concurrent.ThreadContext;
+import org.elasticsearch.rest.RestRequest;
 
 import io.fabric8.elasticsearch.plugin.acl.UserProjectCache;
 import io.fabric8.elasticsearch.util.RequestUtils;
@@ -77,18 +77,17 @@ public class OpenshiftRequestContextFactory {
      * @throws All
      *             exceptions
      */
-    public OpenshiftRequestContext create(final ThreadContext threadContext, final UserProjectCache cache) throws Exception {
+    public OpenshiftRequestContext create(final RestRequest request, final UserProjectCache cache) throws Exception {
         Set<String> projects = new HashSet<>();
         boolean isClusterAdmin = false;
-        String user = utils.getUser(threadContext);
+        String user = utils.getUser(request);
         if (user.contains("\\")) {
             user = user.replace("\\", "/");
-            utils.setUser(threadContext, user);
         }
 
-        String token = utils.getBearerToken(threadContext);
+        String token = utils.getBearerToken(request);
         if (StringUtils.isNotBlank(user) && StringUtils.isNotBlank(token)) {
-            isClusterAdmin = utils.isOperationsUser(threadContext);
+            isClusterAdmin = utils.isOperationsUser(request, user);
 
             if (!cache.hasUser(user, token)) {
                 projects = listProjectsFor(user, token);

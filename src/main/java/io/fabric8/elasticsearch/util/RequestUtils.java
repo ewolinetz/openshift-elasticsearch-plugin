@@ -16,12 +16,18 @@
 
 package io.fabric8.elasticsearch.util;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
+import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.concurrent.ThreadContext;
+import org.elasticsearch.rest.RestRequest;
 
 import io.fabric8.elasticsearch.plugin.ConfigurationSettings;
 import io.fabric8.elasticsearch.plugin.OpenshiftRequestContextFactory.OpenshiftRequestContext;
@@ -42,21 +48,20 @@ public class RequestUtils implements ConfigurationSettings  {
         this.proxyUserHeader = settings.get(SEARCHGUARD_AUTHENTICATION_PROXY_HEADER, DEFAULT_AUTH_PROXY_HEADER);
     }
     
-    public String getUser(ThreadContext threadContext) {
-        return StringUtils.defaultIfEmpty(threadContext.getHeader(proxyUserHeader), "");
+    public String getUser(RestRequest request) {
+        return StringUtils.defaultIfEmpty(request.header(proxyUserHeader), "");
     }
     
-    public String getBearerToken(ThreadContext threadContext) {
-        final String[] auth = StringUtils.defaultIfEmpty(threadContext.getHeader(AUTHORIZATION_HEADER), "").split(" ");
+    public String getBearerToken(RestRequest request) {
+        final String[] auth = StringUtils.defaultIfEmpty(request.header(AUTHORIZATION_HEADER), "").split(" ");
         if (auth.length >= 2 && "Bearer".equals(auth[0])) {
             return auth[1];
         }
         return "";
     }
     
-    public boolean isOperationsUser(ThreadContext threadContext) {
-        final String user = getUser(threadContext);
-        final String token = getBearerToken(threadContext);
+    public boolean isOperationsUser(RestRequest request, String user) {
+        final String token = getBearerToken(request);
         ConfigBuilder builder = new ConfigBuilder().withOauthToken(token);
         boolean allowed = false;
         try (NamespacedOpenShiftClient osClient = new DefaultOpenShiftClient(builder.build())) {
@@ -72,19 +77,41 @@ public class RequestUtils implements ConfigurationSettings  {
         return allowed;
     }
 
-    public void setUser(ThreadContext threadContext, String user) {
-        LOGGER.debug("Modifying header '{}' to be '{}'", proxyUserHeader, user);
-        threadContext.putTransient(proxyUserHeader, user);
-    }
-    
     /**
      * Modify the request of needed
      * @param request the original request
      * @param context the Openshift context 
      */
-    public void modifyRequest(ThreadContext threadContext, OpenshiftRequestContext context) {
-        if(!getUser(threadContext).equals(context.getUser())) {
-            threadContext.putTransient(proxyUserHeader, context.getUser());
+    public RestRequest modifyRequest(RestRequest request, OpenshiftRequestContext context) {
+        if(!getUser(request).equals(context.getUser())) {
+            LOGGER.debug("Modifying header '{}' to be '{}'", proxyUserHeader, context.getUser());
+            final Map<String, List<String>> modifiedHeaders = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            modifiedHeaders.putAll(request.getHeaders());
+            modifiedHeaders.put(proxyUserHeader, Arrays.asList(context.getUser()));
+            return new RestRequest(request.getXContentRegistry(), request.params(), request.path(), modifiedHeaders) {
+
+                @Override
+                public Method method() {
+                    return request.method();
+                }
+
+                @Override
+                public String uri() {
+                    return request.uri();
+                }
+
+                @Override
+                public boolean hasContent() {
+                    return request.hasContent();
+                }
+
+                @Override
+                public BytesReference content() {
+                    return request.content();
+                }
+                
+            };
         }
+        return request;
     }
 }
