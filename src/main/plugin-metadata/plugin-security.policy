@@ -75,4 +75,5 @@ grant {
   permission java.io.FilePermission "<<ALL FILES>>", "read,execute,readlink";
   permission java.net.NetPermission "getProxySelector";
   permission java.net.NetPermission "getCookieHandler";
+  permission java.lang.RuntimePermission "accessClassInPackage.sun.security.ssl";
 };

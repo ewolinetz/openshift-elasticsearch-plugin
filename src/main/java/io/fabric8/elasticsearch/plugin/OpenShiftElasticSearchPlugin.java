@@ -90,8 +90,8 @@ public class OpenShiftElasticSearchPlugin extends Plugin implements Configuratio
         final PluginSettings pluginSettings = new PluginSettings(settings);
         final IndexMappingLoader indexMappingLoader = new IndexMappingLoader(settings);
         final PluginClient pluginClient = new PluginClient(client, threadPool.getThreadContext());
-        final RequestUtils requestUtils = new RequestUtils(settings);
         final OpenshiftClientFactory clientFactory = new OpenshiftClientFactory();
+        final RequestUtils requestUtils = new RequestUtils(settings, clientFactory);
         final OpenshiftRequestContextFactory contextFactory = new OpenshiftRequestContextFactory(settings, requestUtils,
                 clientFactory);
         final SearchGuardSyncStrategyFactory documentFactory = new SearchGuardSyncStrategyFactory(pluginSettings);

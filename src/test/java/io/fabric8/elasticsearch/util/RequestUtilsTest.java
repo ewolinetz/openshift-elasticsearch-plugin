@@ -39,7 +39,7 @@ public class RequestUtilsTest {
     @Before
     public void setUp() throws Exception {
         Settings settings = Settings.builder().put(ConfigurationSettings.SEARCHGUARD_AUTHENTICATION_PROXY_HEADER, PROXY_HEADER).build();
-        util = new RequestUtils(settings);
+        util = new RequestUtils(settings, null);
     }
 
     @Test

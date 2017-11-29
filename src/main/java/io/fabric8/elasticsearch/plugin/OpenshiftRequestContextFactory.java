@@ -21,6 +21,8 @@ import static io.fabric8.elasticsearch.plugin.KibanaIndexMode.SHARED_OPS;
 import static io.fabric8.elasticsearch.plugin.KibanaIndexMode.UNIQUE;
 import static io.fabric8.elasticsearch.plugin.KibanaUserReindexFilter.getUsernameHash;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -29,12 +31,14 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
+import org.elasticsearch.SpecialPermission;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.rest.RestRequest;
 
 import io.fabric8.elasticsearch.plugin.acl.UserProjectCache;
 import io.fabric8.elasticsearch.util.RequestUtils;
+import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.openshift.api.model.Project;
@@ -103,24 +107,33 @@ public class OpenshiftRequestContextFactory {
     // throw
     // an exception if the token is invalid.
     private Set<String> listProjectsFor(final String user, final String token) throws Exception {
-        Set<String> names = new HashSet<>();
-        try {
-            ConfigBuilder builder = new ConfigBuilder().withOauthToken(token);
-            try (OpenShiftClient client = clientFactory.create(builder.build())) {
-                List<Project> projects = client.projects().list().getItems();
-                for (Project project : projects) {
-                    if (!isBlacklistProject(project.getMetadata().getName())) {
-                        names.add(project.getMetadata().getName() + "." + project.getMetadata().getUid());
-                    }
-                }
-            }
-        } catch (KubernetesClientException e) {
-            LOGGER.error("Error retrieving project list for '{}'", e, user);
-            throw new ElasticsearchSecurityException(e.getMessage());
-        } catch (Exception e) {
-            LOGGER.error("Error retrieving project list for '{}'", e, user);
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(new SpecialPermission());
         }
-        return names;
+        return AccessController.doPrivileged(new PrivilegedAction<Set<String>>(){
+
+            @Override
+            public Set<String> run() {
+                Set<String> names = new HashSet<>();
+                Config config = new ConfigBuilder().withOauthToken(token).build();
+                try (OpenShiftClient client = clientFactory.create(config)) {
+                    List<Project> projects = client.projects().list().getItems();
+                    for (Project project : projects) {
+                        if (!isBlacklistProject(project.getMetadata().getName())) {
+                            names.add(project.getMetadata().getName() + "." + project.getMetadata().getUid());
+                        }
+                    }
+                } catch (KubernetesClientException e) {
+                    LOGGER.error("Error retrieving project list for '{}': {}", user, e);
+                    throw new ElasticsearchSecurityException(e.getMessage());
+                } catch (Exception e) {
+                    LOGGER.error("Error retrieving project list for '{}': {}", user, e);
+                }
+                return names;
+            }
+            
+        });
     }
 
     private boolean isBlacklistProject(String project) {

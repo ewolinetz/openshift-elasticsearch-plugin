@@ -78,7 +78,7 @@ public class OpenshiftRequestContextFactoryTest {
 
     private void givenUserContextFactory(boolean isOperationsUser) {
         Settings settings = settingsBuilder.build();
-        utils = spy(new RequestUtils(settings));
+        utils = spy(new RequestUtils(settings, clientFactory));
         doReturn(isOperationsUser).when(utils).isOperationsUser(any(RestRequest.class), anyString());
 
         factory = new OpenshiftRequestContextFactory(settings, utils, clientFactory);

@@ -16,6 +16,8 @@
 
 package io.fabric8.elasticsearch.util;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +25,7 @@ import java.util.TreeMap;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
+import org.elasticsearch.SpecialPermission;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.logging.Loggers;
@@ -30,10 +33,11 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.rest.RestRequest;
 
 import io.fabric8.elasticsearch.plugin.ConfigurationSettings;
+import io.fabric8.elasticsearch.plugin.OpenshiftClientFactory;
 import io.fabric8.elasticsearch.plugin.OpenshiftRequestContextFactory.OpenshiftRequestContext;
+import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.openshift.api.model.SubjectAccessReviewResponse;
-import io.fabric8.openshift.client.DefaultOpenShiftClient;
 import io.fabric8.openshift.client.NamespacedOpenShiftClient;
 
 public class RequestUtils implements ConfigurationSettings  {
@@ -41,11 +45,13 @@ public class RequestUtils implements ConfigurationSettings  {
     private static final Logger LOGGER = Loggers.getLogger(RequestUtils.class);
     public static final String AUTHORIZATION_HEADER = "Authorization";
 
-    private String proxyUserHeader;
+    private final String proxyUserHeader;
+    private final OpenshiftClientFactory k8ClientFactory;
 
     @Inject
-    public RequestUtils(final Settings settings) {
+    public RequestUtils(final Settings settings, OpenshiftClientFactory clientFactory) {
         this.proxyUserHeader = settings.get(SEARCHGUARD_AUTHENTICATION_PROXY_HEADER, DEFAULT_AUTH_PROXY_HEADER);
+        this.k8ClientFactory = clientFactory;
     }
     
     public String getUser(RestRequest request) {
@@ -61,21 +67,33 @@ public class RequestUtils implements ConfigurationSettings  {
     }
     
     public boolean isOperationsUser(RestRequest request, String user) {
-        final String token = getBearerToken(request);
-        ConfigBuilder builder = new ConfigBuilder().withOauthToken(token);
-        boolean allowed = false;
-        try (NamespacedOpenShiftClient osClient = new DefaultOpenShiftClient(builder.build())) {
-            LOGGER.debug("Submitting a SAR to see if '{}' is able to retrieve logs across the cluster", user);
-            SubjectAccessReviewResponse response = osClient.inAnyNamespace().subjectAccessReviews().createNew()
-                    .withVerb("get").withResource("pods/log").done();
-            allowed = response.getAllowed();
-        } catch (Exception e) {
-            LOGGER.error("Exception determining user's '{}' role.", e, user);
-        } finally {
-            LOGGER.debug("User '{}' isOperationsUser: {}", user, allowed);
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(new SpecialPermission());
         }
-        return allowed;
+        return AccessController.doPrivileged(new PrivilegedAction<Boolean>(){
+
+            @Override
+            public Boolean run() {
+                final String token = getBearerToken(request);
+                boolean allowed = false;
+                Config config = new ConfigBuilder().withOauthToken(token).build();
+                try (NamespacedOpenShiftClient osClient = (NamespacedOpenShiftClient) k8ClientFactory.create(config)) {
+                    LOGGER.debug("Submitting a SAR to see if '{}' is able to retrieve logs across the cluster", user);
+                    SubjectAccessReviewResponse response = osClient.inAnyNamespace().subjectAccessReviews().createNew()
+                            .withVerb("get").withResource("pods/log").done();
+                    allowed = response.getAllowed();
+                } catch (Exception e) {
+                    LOGGER.error("Exception determining user's '{}' role: {}", user, e);
+                } finally {
+                    LOGGER.debug("User '{}' isOperationsUser: {}", user, allowed);
+                }
+                return allowed;
+            }
+            
+        });
     }
+        
 
     /**
      * Modify the request of needed
