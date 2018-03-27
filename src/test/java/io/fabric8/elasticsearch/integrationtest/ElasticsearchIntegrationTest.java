@@ -139,7 +139,7 @@ public abstract class ElasticsearchIntegrationTest {
     private final Map<String, Object> testContext = new HashMap<>();
 
     protected final Logger log = Loggers.getLogger(this.getClass());
-
+    
     @BeforeClass
     public static void setupOnce() throws Exception {
         basedir = System.getenv("PROJECT_DIR");
@@ -181,21 +181,21 @@ public abstract class ElasticsearchIntegrationTest {
     }
 
     protected void seedSearchGuardAcls() throws Exception {
-        log.info("Starting seeding of SearchGuard ACLs...");
+        //log.info("Starting seeding of SearchGuard ACLs...");
         String configdir = basedir + "/src/test/resources/sgconfig";
         String[] cmd = { basedir + "/tools/sgadmin.sh", "-cd", configdir, "-ks", keystore, "-kst", "JKS", "-kspass",
             password, "-ts", truststore, "-tst", "JKS", "-tspass", password, "-nhnv", "-nrhn", "-icl" };
         String[] envvars = { "CONFIG_DIR=" + configdir, "SCRIPT_CP=" + System.getProperty("surefire.test.class.path") };
-        log.debug("Seeding ACLS with: {}, {}", cmd, envvars);
+        //log.debug("Seeding ACLS with: {}, {}", cmd, envvars);
         Runtime rt = Runtime.getRuntime();
         Process process = rt.exec(cmd, envvars);
         if (0 != process.waitFor()) {
-            log.error("Stdout of seeding SearchGuard ACLs:\n{}", IOUtils.toString(process.getInputStream()));
+            //log.error("Stdout of seeding SearchGuard ACLs:\n{}", IOUtils.toString(process.getInputStream()));
             fail("Error seeding SearchGuard ACLs:\n{}" + IOUtils.toString(process.getErrorStream()));
         } else {
-            log.debug("Stdout of seeding SearchGuard ACLs:\n{}", IOUtils.toString(process.getInputStream()));
+            //log.debug("Stdout of seeding SearchGuard ACLs:\n{}", IOUtils.toString(process.getInputStream()));
         }
-        log.info("Completed seeding SearchGuard ACL");
+        //log.info("Completed seeding SearchGuard ACL");
     }
 
     protected Settings nodeSettings() {
@@ -207,7 +207,10 @@ public abstract class ElasticsearchIntegrationTest {
                 // Disabling ssl should fail, though it seems to be overridden somewhere...
                 // .put(SSLConfigConstants.SEARCHGUARD_SSL_TRANSPORT_ENABLED, false)
                 // .put("searchguard.ssl.http.enabled", false)
-                .put("http.port", 9200).put("transport.tcp.port", 9300).put("cluster.name", CLUSTER_NAME)
+                
+                .put("http.port", 9200)
+                .put("transport.tcp.port", 9300)
+                .put("cluster.name", CLUSTER_NAME)
                 .put("network.host", "_local_")
                 .putArray("searchguard.nodes_dn", "CN=*")
                 .putArray("searchguard.authcz.admin_dn", "CN=*")
@@ -242,8 +245,9 @@ public abstract class ElasticsearchIntegrationTest {
     private Settings.Builder getDefaultSettingsBuilder(final int nodenum, final boolean dataNode,
             final boolean masterNode) throws Exception {
         String tmp = Files.createTempDirectory(null).toAbsolutePath().toString();
-        log.info("Using base directory: {}", tmp);
-        return Settings.builder().put("node.name", "openshift_test_" + nodenum).put("node.data", dataNode)
+        //log.info("Using base directory: {}", tmp);
+        return Settings.builder().put("node.name", "openshift_test_" + nodenum)
+                .put("node.data", dataNode)
                 .put("node.master", masterNode)
                 .put("cluster.name", CLUSTER_NAME)
                 .put("path.data", tmp + "/data/data")
@@ -253,13 +257,16 @@ public abstract class ElasticsearchIntegrationTest {
                 //.put("path.plugins", tmp + "/data/plugins")
                 .put("http.enabled", true)
                 .put("cluster.routing.allocation.disk.watermark.high", "1mb")
-                .put("cluster.routing.allocation.disk.watermark.low", "1mb").put("http.cors.enabled", true)
-                .put("node.local", false).put("discovery.zen.minimum_master_nodes", 1).put("path.home", tmp.toString());
+                .put("cluster.routing.allocation.disk.watermark.low", "1mb")
+                .put("http.cors.enabled", true)
+                .put("node.local", false)
+                .put("discovery.zen.minimum_master_nodes", 1)
+                .put("path.home", tmp.toString());
     }
 
     protected final String getHttpServerUri() {
         final String address = "http" + (enableHttpClientSSL ? "s" : "") + "://" + httpHost + ":" + httpPort;
-        log.debug("Connect to {}", address);
+        //log.debug("Connect to {}", address);
         return address;
     }
 
@@ -383,7 +390,7 @@ public abstract class ElasticsearchIntegrationTest {
     protected void waitForCluster(final ClusterHealthStatus status, final TimeValue timeout, final Client client,
             int assertNodes) throws IOException {
         try {
-            log.debug("waiting for cluster state {}", status.name());
+            //log.debug("waiting for cluster state {}", status.name());
             final ClusterHealthResponse healthResponse = client.admin().cluster().prepareHealth()
                     .setWaitForStatus(status).setTimeout(timeout).setWaitForNodes(String.valueOf(assertNodes)).execute()
                     .actionGet();
@@ -391,8 +398,8 @@ public abstract class ElasticsearchIntegrationTest {
                 throw new IOException("cluster state is " + healthResponse.getStatus().name() + " with "
                         + healthResponse.getNumberOfNodes() + " nodes");
             } else {
-                log.debug("... cluster state ok " + healthResponse.getStatus().name() + " with "
-                        + healthResponse.getNumberOfNodes() + " nodes");
+                //log.debug("... cluster state ok " + healthResponse.getStatus().name() + " with "
+                //        + healthResponse.getNumberOfNodes() + " nodes");
             }
 
             org.junit.Assert.assertEquals(assertNodes, healthResponse.getNumberOfNodes());
@@ -436,11 +443,11 @@ public abstract class ElasticsearchIntegrationTest {
             if (file.exists() && file.canRead()) {
                 return file;
             } else {
-                log.error("Cannot read from {}, maybe the file does not exists? ", file.getAbsolutePath());
+                //log.error("Cannot read from {}, maybe the file does not exists? ", file.getAbsolutePath());
             }
 
         } else {
-            log.error("Failed to load " + fileNameFromClasspath);
+            //log.error("Failed to load " + fileNameFromClasspath);
         }
         return null;
     }
@@ -589,7 +596,7 @@ public abstract class ElasticsearchIntegrationTest {
 
         if (enableHttpClientSSL) {
 
-            log.debug("Configure HTTP client with SSL");
+            //log.debug("Configure HTTP client with SSL");
 
             final KeyStore myTrustStore = KeyStore.getInstance("JKS");
             myTrustStore.load(new FileInputStream(truststore), password.toCharArray());
