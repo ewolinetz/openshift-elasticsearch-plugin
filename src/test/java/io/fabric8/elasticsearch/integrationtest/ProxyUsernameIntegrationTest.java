@@ -18,7 +18,7 @@ package io.fabric8.elasticsearch.integrationtest;
 
 import org.junit.Test;
 
-import io.fabric8.elasticsearch.plugin.KibanaUserReindexFilter;
+import io.fabric8.elasticsearch.plugin.OpenshiftRequestContextFactory;
 
 public class ProxyUsernameIntegrationTest extends ElasticsearchIntegrationTest {
     
@@ -58,7 +58,7 @@ public class ProxyUsernameIntegrationTest extends ElasticsearchIntegrationTest {
             givenUserIsNotClusterAdmin(username);
             givenUserIsAdminForProjects("myproject");
 
-            whenCheckingIndexExists(".kibana." + KibanaUserReindexFilter.getUsernameHash(formatUserName(username)));
+            whenCheckingIndexExists(".kibana." + OpenshiftRequestContextFactory.getUsernameHash(formatUserName(username)));
             assertThatResponseIsSuccessful();
         }
     }

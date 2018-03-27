@@ -49,6 +49,7 @@ import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.openshift.api.model.SubjectAccessReviewResponse;
 import io.fabric8.openshift.client.DefaultOpenShiftClient;
 import io.fabric8.openshift.client.NamespacedOpenShiftClient;
+import io.netty.channel.Channel;
 import okhttp3.Request;
 import okhttp3.Response;
 

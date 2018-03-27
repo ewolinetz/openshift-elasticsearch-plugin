@@ -81,7 +81,7 @@
 
         <elasticsearch.plugin.name>openshift-elasticsearch</elasticsearch.plugin.name>
         <elasticsearch.version>5.5.2</elasticsearch.version>
-        <kubernetes-client.version>3.1.0</kubernetes-client.version>
+        <kubernetes-client.version>3.1.10</kubernetes-client.version>
         <searchguard.version>5.5.2-15-rh</searchguard.version>
         <searchguard-ssl.version>5.5.2-23</searchguard-ssl.version>
         <!-- used by vendor builds to use vendor version of searchguard plugins -->
@@ -98,6 +98,21 @@
         <dependency>
             <groupId>io.fabric8</groupId>
             <artifactId>openshift-client</artifactId>
+            <version>${kubernetes-client.version}</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>jackson-core</artifactId>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                </exclusion>
+                <exclusion>
+                    <artifactId>jackson-dataformat-yaml</artifactId>
+                    <groupId>com.fasterxml.jackson.dataformat</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>openshift-server-mock</artifactId>
             <version>${kubernetes-client.version}</version>
             <exclusions>
                 <exclusion>
@@ -146,7 +161,7 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.8.2</version>
+            <version>4.9</version>
             <scope>test</scope>
         </dependency>
         <dependency>

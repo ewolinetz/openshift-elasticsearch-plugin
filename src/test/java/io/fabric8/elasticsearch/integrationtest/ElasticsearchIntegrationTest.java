@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -63,6 +64,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicHeader;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchTimeoutException;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.elasticsearch.action.admin.cluster.node.info.NodeInfo;
@@ -71,11 +73,11 @@ import org.elasticsearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.cluster.health.ClusterHealthStatus;
 import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentParser;
@@ -136,7 +138,7 @@ public abstract class ElasticsearchIntegrationTest {
     private static String password = "changeit";
     private final Map<String, Object> testContext = new HashMap<>();
 
-    protected final ESLogger log = Loggers.getLogger(this.getClass());
+    protected final Logger log = Loggers.getLogger(this.getClass());
 
     @BeforeClass
     public static void setupOnce() throws Exception {
@@ -201,27 +203,29 @@ public abstract class ElasticsearchIntegrationTest {
                 // .put("path.conf", this.getDataPath("/config"))
                 // set to false to completely disable Searchguard plugin functionality, this
                 // should result into failed tests?
-                .put("searchguard.enabled", true)
+                //.put("searchguard.enabled", true)
                 // Disabling ssl should fail, though it seems to be overridden somewhere...
                 // .put(SSLConfigConstants.SEARCHGUARD_SSL_TRANSPORT_ENABLED, false)
                 // .put("searchguard.ssl.http.enabled", false)
                 .put("http.port", 9200).put("transport.tcp.port", 9300).put("cluster.name", CLUSTER_NAME)
-                .put("network.host", "_local_").putArray("searchguard.nodes_dn", "CN=*")
-                .putArray("searchguard.authcz.admin_dn", "CN=*").put(ConfigurationSettings.SG_CLIENT_KS_PATH, keystore)
+                .put("network.host", "_local_")
+                .putArray("searchguard.nodes_dn", "CN=*")
+                .putArray("searchguard.authcz.admin_dn", "CN=*")
+                .put(ConfigurationSettings.SG_CLIENT_KS_PATH, keystore)
                 .put(ConfigurationSettings.SG_CLIENT_TS_PATH, truststore)
                 .put("searchguard.ssl.transport.keystore_type", "JKS")
                 .put("searchguard.ssl.transport.keystore_password", password)
                 .put("searchguard.ssl.transport.keystore_filepath", keystore)
-                .put("searchguard.ssl.transport.trustore_type", "JKS")
-                .put("searchguard.ssl.transport.trustore_password", password)
+                .put("searchguard.ssl.transport.truststore_type", "JKS")
+                .put("searchguard.ssl.transport.truststore_password", password)
                 .put("searchguard.ssl.transport.truststore_filepath", truststore)
                 .put("searchguard.ssl.http.keystore_type", "JKS")
                 .put("searchguard.ssl.http.keystore_password", password)
                 .put("searchguard.ssl.http.keystore_filepath", keystore)
-                .put("searchguard.ssl.http.trustore_type", "JKS")
-                .put("searchguard.ssl.http.trustore_password", password)
+                .put("searchguard.ssl.http.truststore_type", "JKS")
+                .put("searchguard.ssl.http.truststore_password", password)
                 .put("searchguard.ssl.http.truststore_filepath", truststore)
-                .put("discovery.zen.ping.multicast.enabled", false)
+                //.put("discovery.zen.ping.multicast.enabled", false)
                 .put("searchguard.ssl.http.enable_openssl_if_available", false)
                 .put("searchguard.ssl.transport.enable_openssl_if_available", false)
                 .put("searchguard.ssl.transport.enforce_hostname_verification", false)
@@ -239,11 +243,15 @@ public abstract class ElasticsearchIntegrationTest {
             final boolean masterNode) throws Exception {
         String tmp = Files.createTempDirectory(null).toAbsolutePath().toString();
         log.info("Using base directory: {}", tmp);
-        return Settings.settingsBuilder().put("node.name", "openshift_test_" + nodenum).put("node.data", dataNode)
-                .put("node.master", masterNode).put("cluster.name", CLUSTER_NAME).put("path.data", tmp + "/data/data")
-                .put("path.work", tmp + "/data/work").put("path.logs", tmp + "/data/logs")
-                .put("path.conf", tmp + "/data/config").put("path.plugins", tmp + "/data/plugins")
-                .put("index.number_of_shards", "1").put("index.number_of_replicas", "0").put("http.enabled", true)
+        return Settings.builder().put("node.name", "openshift_test_" + nodenum).put("node.data", dataNode)
+                .put("node.master", masterNode)
+                .put("cluster.name", CLUSTER_NAME)
+                .put("path.data", tmp + "/data/data")
+                //.put("path.work", tmp + "/data/work")
+                .put("path.logs", tmp + "/data/logs")
+                .put("path.conf", tmp + "/data/config")
+                //.put("path.plugins", tmp + "/data/plugins")
+                .put("http.enabled", true)
                 .put("cluster.routing.allocation.disk.watermark.high", "1mb")
                 .put("cluster.routing.allocation.disk.watermark.low", "1mb").put("http.cors.enabled", true)
                 .put("node.local", false).put("discovery.zen.minimum_master_nodes", 1).put("path.home", tmp.toString());
@@ -293,7 +301,7 @@ public abstract class ElasticsearchIntegrationTest {
 
     protected void givenDocumentIsIndexed(String index, String type, String id, XContentBuilder content)
             throws Exception {
-        esNode1.client().prepareIndex(index, type, id).putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true")
+        esNode1.client().prepareIndex(index, type, id)//.putHeader(ConfigConstants.SG_CONF_REQUEST_HEADER, "true")
                 .setSource(content).execute().get();
     }
 
@@ -392,10 +400,10 @@ public abstract class ElasticsearchIntegrationTest {
             final NodesInfoResponse res = esNode1.client().admin().cluster().nodesInfo(new NodesInfoRequest())
                     .actionGet();
 
-            final NodeInfo[] nodes = res.getNodes();
+            final List<NodeInfo> nodes = res.getNodes();
 
-            for (int i = 0; i < nodes.length; i++) {
-                final NodeInfo nodeInfo = nodes[i];
+            for (int i = 0; i < nodes.size(); i++) {
+                final NodeInfo nodeInfo = nodes.get(i);
                 if (nodeInfo.getHttp() != null && nodeInfo.getHttp().address() != null) {
                     final InetSocketTransportAddress is = (InetSocketTransportAddress) nodeInfo.getHttp().address()
                             .publishAddress();
@@ -637,7 +645,7 @@ public abstract class ElasticsearchIntegrationTest {
     protected BytesReference readXContent(final Reader reader, final XContentType contentType) throws IOException {
         XContentParser parser = null;
         try {
-            parser = XContentFactory.xContent(contentType).createParser(reader);
+            parser = XContentFactory.xContent(contentType).createParser(NamedXContentRegistry.EMPTY, reader);
             parser.nextToken();
             final XContentBuilder builder = XContentFactory.jsonBuilder();
             builder.copyCurrentStructure(parser);
